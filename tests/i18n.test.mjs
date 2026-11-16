@@ -1,0 +1,15 @@
+import {test} from 'node:test';import assert from'node:assert/strict';import{readFile,readdir}from'node:fs/promises';import{join}from'node:path';import ts from'typescript';import{loadTypeScript}from'./load-typescript.mjs';import{root}from'./main-harness.mjs';
+const {catalogs}=loadTypeScript('src/shared/translations.ts'),{t,msg,setLanguage,translateMessage}=loadTypeScript('src/shared/i18n.ts')
+test('all three catalogues are complete and preserve interpolation parameters',()=>{
+ const keys=Object.keys(catalogs.ru).sort();assert.ok(keys.length>850)
+ for(const locale of ['en','zh-CN']){assert.deepEqual(Object.keys(catalogs[locale]).sort(),keys);for(const key of keys){assert.ok(catalogs[locale][key]?.length,key);assert.deepEqual((key.match(/\{\d+\}/g)??[]).sort(),(catalogs[locale][key].match(/\{\d+\}/g)??[]).sort(),key)}}
+})
+test('text and template translations work without translating interpolation values or third-party content',()=>{
+ setLanguage('en');assert.equal(t('Сохранить'),'Save');assert.equal(msg`Разрешить ${'Мой инструмент'}?`,'Allow Мой инструмент?');assert.equal(translateMessage('Не найден CLI из @qwen-code/sdk: C:\\test\\cli.js'),'Bundled CLI not found in @qwen-code/sdk: C:\\test\\cli.js');assert.equal(translateMessage('My custom API error'),'My custom API error');setLanguage('zh-CN');assert.equal(t('Сохранить'),'保存');assert.equal(msg`Разрешить ${'Мой инструмент'}?`,'允许 Мой инструмент？');setLanguage('ru');assert.equal(t('Сохранить'),'Сохранить')
+})
+test('all application-owned Cyrillic UI literals and templates have both translations',async()=>{
+ const files=[];async function walk(dir){for(const e of await readdir(dir,{withFileTypes:true})){const f=join(dir,e.name);if(e.isDirectory())await walk(f);else if(e.name.endsWith('.ts')&&!e.name.endsWith('.d.ts')&&!e.name.includes('translations'))files.push(f)}}await walk(join(root,'src/renderer/src'));for(const name of ['settings','settings-help','core-tools','studio'])files.push(join(root,'src/shared',name+'.ts'))
+ const missing=[];for(const f of files){const sf=ts.createSourceFile(f,await readFile(f,'utf8'),ts.ScriptTarget.Latest,true);function visit(n){let source;if(ts.isStringLiteral(n)||ts.isNoSubstitutionTemplateLiteral(n))source=n.text;else if(ts.isTemplateExpression(n)){source=n.head.text;n.templateSpans.forEach((s,i)=>source+='{'+i+'}'+s.literal.text)}if(source&&/[А-Яа-яЁё]/.test(source)&&!catalogs.en[source])missing.push([f,source]);ts.forEachChild(n,visit)}visit(sf)}assert.deepEqual(missing,[])
+})
+
+test('English source keys in the onboarding UI are localized too',async()=>{const source=await readFile(join(root,'src/renderer/src/onboarding.ts'),'utf8'),sf=ts.createSourceFile('onboarding.ts',source,ts.ScriptTarget.Latest,true),missing=[];function visit(n){if(ts.isCallExpression(n)&&n.expression.getText(sf)==='t'&&n.arguments[0]&&ts.isStringLiteral(n.arguments[0])){const key=n.arguments[0].text;if(!catalogs.ru[key]||!catalogs['zh-CN'][key])missing.push(key)}ts.forEachChild(n,visit)}visit(sf);assert.deepEqual(missing,[])})

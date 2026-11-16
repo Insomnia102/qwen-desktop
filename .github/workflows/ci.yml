@@ -1,0 +1,32 @@
+name: Checks
+on:
+  pull_request:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: checks-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  check:
+    name: Check ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [windows-2025, ubuntu-24.04, macos-15-intel, macos-15]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 25
+    env:
+      QWEN_USAGE_STATISTICS_ENABLED: 'false'
+      QWEN_TELEMETRY_ENABLED: 'false'
+      OTEL_SDK_DISABLED: 'true'
+      QWEN_CODE_MODELS_DEV_REFRESH: 'off'
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-project
+      - name: Typecheck, integration tests, build and UI checks
+        run: node scripts/ci-check.mjs

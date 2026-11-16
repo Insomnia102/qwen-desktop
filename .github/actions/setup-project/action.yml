@@ -1,0 +1,26 @@
+name: Set up Qwen Desktop
+description: Install the exact project pnpm version and frozen dependencies.
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@v6
+      with:
+        node-version: '26'
+        package-manager-cache: false
+    - name: Check CI file completeness
+      shell: bash
+      run: node scripts/ci-preflight.mjs
+    - name: Validate package and tag metadata
+      shell: bash
+      run: node scripts/ci-metadata.mjs
+    - uses: pnpm/action-setup@v4
+      with:
+        run_install: false
+    - uses: actions/setup-node@v6
+      with:
+        node-version: '26'
+        cache: pnpm
+        cache-dependency-path: pnpm-lock.yaml
+    - name: Install frozen dependencies
+      shell: bash
+      run: pnpm install --frozen-lockfile

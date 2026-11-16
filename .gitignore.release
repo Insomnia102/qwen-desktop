@@ -1,0 +1,21 @@
+node_modules/
+out/
+dist/
+release-assets/
+release-notes.md
+.check-build/
+coverage/
+*.log
+.env
+.env.*
+!.env.example
+.qwen/
+.qwen-desktop*/
+*.p12
+*.pfx
+*.p8
+*.pem
+*.key
+.DS_Store
+Thumbs.db
+# Commit pnpm-lock.yaml. It is required by the frozen CI install.

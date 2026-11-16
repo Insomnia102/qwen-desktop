@@ -1,0 +1,53 @@
+appId: com.qwen.desktop
+productName: qwen-desktop
+directories:
+  buildResources: build
+  output: dist
+files:
+  - out/**
+  - resources/**
+  - package.json
+  - '!**/.env*'
+  - '!**/.npmrc'
+  - '!**/.qwen/**'
+asar: true
+asarUnpack:
+  - resources/**
+  - node_modules/@qwen-code/sdk/**
+artifactName: ${name}-${version}-${os}-${arch}.${ext}
+win:
+  executableName: qwen-desktop
+  icon: build/icon.ico
+  target:
+    - nsis
+nsis:
+  shortcutName: Qwen Desktop
+  uninstallDisplayName: Qwen Desktop
+  createDesktopShortcut: always
+mac:
+  icon: build/icon.icns
+  category: public.app-category.developer-tools
+  target:
+    - dmg
+    - zip
+  identity: '-'
+  hardenedRuntime: true
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+  notarize: false
+  extendInfo:
+    NSDocumentsFolderUsageDescription: Qwen Desktop accesses project folders selected by you.
+    NSDownloadsFolderUsageDescription: Qwen Desktop accesses project folders selected by you.
+dmg:
+  title: Qwen Desktop
+linux:
+  executableName: qwen-desktop
+  icon: build/icon.png
+  category: Development
+  target:
+    - AppImage
+    - tar.gz
+npmRebuild: false
+# Publishing is performed by the release workflow after every platform succeeds.
+publish: null
+afterPack: scripts/release-legal.mjs

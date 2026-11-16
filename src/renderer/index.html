@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' ws://127.0.0.1:* ws://localhost:*; object-src 'none'; base-uri 'none'" />
+    <title>Qwen Desktop</title>
+    <link rel="icon" type="image/svg+xml" href="/qwen.svg" />
+    <script src="/theme-init.js"></script>
+    <link id="app-styles" rel="stylesheet" href="/assets/main.css" />
+    <link rel="stylesheet" href="/assets/history.css" />
+    <link rel="stylesheet" href="/assets/settings.css" />
+    <link rel="stylesheet" href="/assets/mcp.css" />
+    <link rel="stylesheet" href="/assets/design.css" />
+    <link rel="stylesheet" href="/assets/studio.css" />
+  </head>
+  <body>
+    <div class="app-container">
+      <aside class="sidebar" aria-label="Навигация">
+        <div class="brand"><img class="brand-logo" src="/qwen.svg" alt="" width="30" height="30" /><span class="brand-title">Qwen <span class="brand-muted">Desktop</span><small>Ваше пространство для кода</small></span></div>
+        <nav class="nav-menu">
+          <div class="nav-group">
+            <button type="button" class="nav-item active" id="nav-workdirs" aria-expanded="true" aria-controls="workdirs-list">
+              <span class="nav-icon" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-1.22-1.8A2 2 0 0 0 7.53 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"/></svg></span>
+              <span class="nav-label">Workdirs</span>
+              <span class="nav-chevron" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg></span>
+            </button>
+            <ul class="sub-list" id="workdirs-list">
+              <li class="workdir-empty" id="workdir-empty">Папка не выбрана</li>
+              <li class="sub-item active-sub" id="current-workdir" hidden><span id="workdir-name"></span></li>
+              <li class="folder-action"><button type="button" class="action-item" id="choose-workdir">+ Открыть папку</button></li>
+            </ul>
+          </div>
+          <button type="button" class="nav-item" id="nav-mcp" title="Подключения и инструменты MCP">
+            <span class="nav-icon" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 22v-5M9 8V2M15 8V2M18 8v5a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V8Z"/></svg></span>
+            <span class="nav-label">MCP-серверы</span><span class="nav-badge" id="mcp-count">Подключения</span>
+          </button>
+          <button type="button" class="nav-item" id="nav-skills" disabled title="Управление навыками пока не подключено">
+            <span class="nav-icon" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="m13 2-10 12h9l-1 8 10-12h-9Z"/></svg></span>
+            <span class="nav-label">Skills</span><span class="nav-badge">Скоро</span>
+          </button>
+        </nav>
+        <div class="sidebar-footer"><div class="theme-row"><label for="theme-select">Оформление</label><select id="theme-select" aria-label="Тема оформления"><option value="system">Как в системе</option><option value="dark">Тёмная</option><option value="light">Светлая</option></select></div><p class="local-note"><span class="local-dot" aria-hidden="true"></span> История хранится на этом устройстве</p></div>
+      </aside>
+
+      <main class="chat-area">
+        <header class="chat-header">
+          <div class="workspace-heading">
+            <span class="eyebrow">Рабочая папка</span>
+            <h1 id="workspace-name">Папка не выбрана</h1>
+            <p id="workspace-path">Откройте папку проекта, чтобы начать.</p>
+          </div>
+          <div class="header-actions"><button type="button" class="icon-button theme-toggle" id="theme-toggle" aria-label="Сменить тему"><svg class="sun-icon" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5m11 11L19 19M5 19l1.5-1.5m11-11L19 5"/></svg><svg class="moon-icon" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M20.5 13A8.5 8.5 0 0 1 11 3.5 8.5 8.5 0 1 0 20.5 13Z"/></svg></button>
+            <button type="button" class="button button-secondary" id="new-chat" disabled>Новый диалог</button>
+            <button type="button" class="button button-stop" id="stop-qwen" disabled>Остановить</button>
+          </div>
+        </header>
+
+        <div class="chat-history" id="chat-history" aria-label="История диалога">
+          <section class="empty-state" id="empty-state">
+            <div class="empty-mark" aria-hidden="true"><img src="/qwen.svg" width="52" height="52" alt="" /></div><span class="welcome-kicker">Меньше рутины. Больше идей.</span>
+            <h2>Что создадим сегодня?</h2>
+            <p id="empty-description">Выберите рабочую папку слева, затем напишите задачу для Qwen.</p><div class="starter-grid"><button type="button" class="starter" data-prompt="Изучи структуру проекта и кратко объясни, как он устроен."><span class="starter-icon" aria-hidden="true">↗</span><strong>Разобраться в проекте</strong><span>Структура, код и точки входа</span></button><button type="button" class="starter" data-prompt="Помоги найти и исправить ошибку в проекте. Сначала уточни, что именно не работает."><span class="starter-icon" aria-hidden="true">⌘</span><strong>Найти решение</strong><span>От ошибки к рабочему коду</span></button><button type="button" class="starter" data-prompt="Давай добавим новую функцию в проект. Помоги продумать реализацию."><span class="starter-icon" aria-hidden="true">＋</span><strong>Создать что-то новое</strong><span>От идеи к первой реализации</span></button></div>
+          </section>
+          <div class="messages" id="messages"></div>
+        </div>
+
+        <div class="chat-input-container">
+          <div class="status-line" role="status" aria-live="polite"><span class="status-dot" id="status-dot" data-state="idle" aria-hidden="true"></span><span id="agent-status">Выберите рабочую папку</span></div>
+          <form id="chat-form" class="composer">
+            <label class="visually-hidden" for="chat-input">Задача для Qwen</label>
+            <textarea id="chat-input" rows="3" maxlength="200000" placeholder="Сначала выберите рабочую папку" disabled></textarea>
+            <div class="composer-footer"><span>Enter — отправить · Shift+Enter — новая строка</span><button type="submit" class="button button-primary" id="send-message" disabled>Отправить <span aria-hidden="true">↑</span></button></div>
+          </form>
+        </div>
+      </main>
+    </div>
+    <script type="module" src="/src/bootstrap.ts"></script>
+  </body>
+</html>

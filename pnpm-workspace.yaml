@@ -1,0 +1,6 @@
+allowBuilds:
+  electron-winstaller: false
+  esbuild: true
+  node-pty: true
+minimumReleaseAgeExclude:
+  - '@qwen-code/sdk@0.1.32'

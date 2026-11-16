@@ -1,0 +1,62 @@
+/* Persistent workdirs and their chats. Loaded after the existing chat styles. */
+#current-workdir { display: none; }
+#saved-workdirs { list-style: none; min-width: 0; }
+.saved-workdir { margin: 3px 0 10px; }
+.saved-workdir-heading { display: flex; align-items: stretch; min-width: 0; }
+.workdir-toggle, .workdir-select { border: 0; background: transparent; text-align: left; color: var(--text); }
+.workdir-toggle { flex: 0 0 30px; padding: 9px 0 9px 12px; font-size: 16px; line-height: 1; }
+.workdir-select { flex: 1; min-width: 0; padding: 9px 12px 9px 4px; font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.selected-workdir { background: var(--surface-1); }
+.selected-workdir .workdir-select { color: var(--text); }
+.workdir-select:not(:disabled):hover, .workdir-toggle:not(:disabled):hover { background: var(--surface-2); }
+.saved-chat-list { list-style: none; padding: 3px 9px 0 22px; }
+.saved-chat { display: flex; flex-direction: column; gap: 4px; width: 100%; min-width: 0; padding: 9px 10px; margin: 2px 0; border: 1px solid transparent; border-radius: 6px; background: transparent; text-align: left; }
+.saved-chat:not(:disabled):hover { background: var(--surface-2); }
+.saved-chat[aria-current="true"] { border-color: var(--border-strong); background: var(--surface-2); }
+.saved-chat-title { width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; line-height: 1.4; color: var(--text); }
+.saved-chat-detail { font-size: 10px; line-height: 1.4; color: var(--text-secondary); }
+.workspace-heading .chat-caption { color: var(--text-secondary); font-size: 12px; margin-top: 7px; }
+
+/* SVG chevrons retain the same alignment in both states. */
+.workdir-toggle { display: grid; place-items: center; padding: 0; min-height: 34px; }
+.workdir-toggle svg { transition: transform .15s ease; }
+.workdir-toggle[aria-expanded="true"] svg { transform: rotate(90deg); }
+
+.saved-chat-row { display: flex; align-items: center; position: relative; min-width: 0; border-radius: 6px; }
+.saved-chat-row:has(.saved-chat[aria-current="true"]) { background: var(--surface-2); }
+.saved-chat-row > .saved-chat { flex: 1; width: 0; }
+.chat-menu { flex: 0 0 26px; margin-right: 3px; }
+.chat-menu[open] { z-index: 5; }
+.chat-menu-trigger { display: grid; place-items: center; width: 26px; height: 28px; border-radius: 4px; list-style: none; color: var(--text-secondary); cursor: pointer; }
+.chat-menu-trigger::-webkit-details-marker { display: none; }
+.chat-menu-trigger:hover, .chat-menu[open] > summary { background: var(--surface-2); color: var(--text); }
+.chat-menu-actions { position: absolute; right: 0; top: calc(100% - 4px); min-width: 155px; padding: 5px; border: 1px solid var(--border-strong); border-radius: 7px; background: var(--surface-1); box-shadow: 0 8px 24px var(--shadow-colour); }
+.chat-menu-actions button { display: block; width: 100%; padding: 9px 10px; border: 0; border-radius: 4px; background: transparent; font-size: 12px; text-align: left; }
+.chat-menu-actions button:hover { background: var(--surface-2); }
+.chat-menu-actions .chat-delete { color: var(--danger); }
+.chat-menu[inert] { opacity: .45; }
+
+/* Thinking and progress share one activity block. */
+.activity-items > .message { max-width: 100%; width: 100%; align-self: stretch; margin: 0; }
+.activity-items > .message.assistant { border-color: var(--border); background: var(--surface-1); }
+.activity-items { gap: 10px; }
+.activity > summary { user-select: none; }
+
+.chat-dialog { position: fixed; inset: 0; width: min(440px, calc(100vw - 32px)); margin: auto; padding: 24px; border: 1px solid var(--border-strong); border-radius: 12px; background: var(--surface-1); color: var(--text); box-shadow: 0 18px 70px var(--shadow-colour); }
+.chat-dialog::backdrop { background: var(--overlay); }
+.chat-dialog h2 { margin: 0 0 18px; font-size: 17px; line-height: 1.4; }
+.chat-dialog label { display: block; margin-bottom: 8px; font-size: 12px; color: var(--text-secondary); }
+.chat-dialog input { display: block; width: 100%; padding: 10px 12px; border: 1px solid var(--accent-border); border-radius: 6px; outline: none; background: var(--surface-1); color: var(--text); font: inherit; font-size: 14px; }
+.chat-dialog input:focus { border-color: var(--accent-border); }
+.chat-dialog p { font-size: 13px; line-height: 1.6; overflow-wrap: anywhere; }
+.chat-dialog-error { min-height: 20px; margin: 8px 0; color: var(--danger); }
+.chat-dialog-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
+.button-danger { background: var(--danger-soft); border-color: var(--danger-border); color: var(--text); }
+.button-danger:not(:disabled):hover { background: var(--danger-soft); }
+@media (prefers-reduced-motion: reduce) { .workdir-toggle svg { transition: none; } }
+.workdir-close { flex: 0 0 28px; display: grid; place-items: center; margin-right: 5px; border: 0; border-radius: 5px; background: transparent; color: var(--muted); }
+.workdir-close:not(:disabled):hover { background: var(--surface-2); color: var(--text); }
+.closed-workdirs { margin: 10px 8px 12px 20px; font-size: 11px; color: var(--text-secondary); }
+.closed-workdirs > summary { cursor: pointer; padding: 8px 0; }
+.workdir-reopen { display: block; width: 100%; padding: 8px 10px; border: 0; border-radius: 5px; background: transparent; text-align: left; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.workdir-reopen:not(:disabled):hover { background: var(--surface-2); color: var(--text); }
