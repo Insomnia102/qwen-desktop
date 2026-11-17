@@ -17,7 +17,7 @@ const output = join(appRoot,'out/renderer')
 const names = await readdir(join(output, 'assets'))
 const html = await readFile(join(output, 'index.html'), 'utf8')
 const {build}=require('esbuild')
-const source=(await build({entryPoints:[join(appRoot,'src/renderer/src/bootstrap.ts')],bundle:true,write:false,format:'iife',platform:'browser',target:'es2022'})).outputFiles[0].text
+const source=(await build({stdin:{contents:"import './src/renderer/src/bootstrap.ts';import {EditorView} from '@codemirror/view';import {undo,redo} from '@codemirror/commands';globalThis.__skillEditorTest={EditorView,undo,redo}",resolveDir:appRoot},bundle:true,write:false,format:'iife',platform:'browser',target:'es2022'})).outputFiles[0].text
 const css = await readFile(join(output, 'assets', names.find(x => x.endsWith('.css'))), 'utf8')
 const launches = [], errors = [], decisions = [], management = []
 let h, dom, listener, savedTheme
@@ -67,6 +67,8 @@ async function boot() {
   if(savedTheme)dom.window.localStorage.setItem('qwen-desktop-theme',savedTheme)
   dom.window.localStorage.setItem('qwen-desktop-language','ru')
   dom.window.structuredClone = structuredClone
+  dom.window.Range.prototype.getClientRects=()=>[]
+  dom.window.Range.prototype.getBoundingClientRect=()=>new dom.window.DOMRect()
   dom.window.matchMedia = () => ({matches:true,addEventListener(){},removeEventListener(){}})
   dom.window.HTMLDialogElement.prototype.showModal = function () { this.open = true }
   dom.window.HTMLDialogElement.prototype.close = function () { this.open = false }
@@ -188,26 +190,53 @@ try {
   await click('#skill-add');fillStudio('#skill-name','ui-skill');fillStudio('#skill-description','UI test description');fillStudio('#skill-body','# UI skill body\n\nKeep this text.')
   el('#skill-model-invocable').checked=false;el('#skill-model-invocable').dispatchEvent(new dom.window.Event('change',{bubbles:true}));await submitStudio();await wait(()=>el('#skill-invoke'))
   assert.equal(el('#skill-name').readOnly,true);assert.equal(el('#skill-model-invocable').checked,false)
-  // Supporting-file editing locks the main form until its own draft is saved.
-  fillStudio('#skill-file-name','references/example.md');await click('#skill-file-add');await wait(()=>el('.skill-file-title')?.textContent==='references/example.md'&&el('#skill-file-text')&&!el('#skill-file-text').closest('fieldset').disabled);fillStudio('#skill-file-text','Reference content')
-  assert.equal(el('#skill-body').closest('fieldset').disabled,true)
-  await click('#skill-file-save');await wait(()=>el('.studio-dialog .settings-message').textContent.includes('Файл skill сохранён'))
+  // Settings first; switching files keeps drafts and automatically saves them.
+  assert.equal(el('#skill-tab-general').getAttribute('aria-selected'),'true')
+  fillStudio('#skill-description','UI test description updated')
+  await click('#skill-tab-files');await wait(()=>el('#skill-file-text'))
+  const pathDialog=async(button,name,directory='')=>{
+    await click(button);await wait(()=>el('.skill-path-dialog'))
+    if(name!==null)fillStudio('#skill-file-name',name)
+    const directoryControl=el('#skill-file-directory');if(directoryControl)directoryControl.value=directory
+    el('.skill-path-dialog form').dispatchEvent(new dom.window.Event('submit',{bubbles:true,cancelable:true}))
+    await wait(()=>!el('.skill-path-dialog'))
+  }
+  await pathDialog('#skill-file-add','references/example.md')
+  await wait(()=>el('.skill-file-title')?.textContent==='references/example.md'&&el('#skill-file-text'))
+  fillStudio('#skill-file-text','Reference content')
   assert.equal(el('#skill-body').closest('fieldset').disabled,false)
-  // Full file tree: folders, nested files, draft protection, moves, resources and soft removal.
-  fillStudio('#skill-file-name','rules/nested');await click('#skill-folder-add');await wait(()=>el('.skill-file-title')?.textContent==='rules/nested')
-  fillStudio('#skill-file-name','rules/nested/check.py');await click('#skill-file-add');await wait(()=>el('.skill-file-title')?.textContent==='rules/nested/check.py'&&el('#skill-file-text')&&!el('#skill-file-text').closest('fieldset').disabled)
-  fillStudio('#skill-file-text','draft');await click('.skill-tree-file[data-path="SKILL.md"]');assert.equal(el('.skill-file-title').textContent,'rules/nested/check.py');assert.equal(el('#skill-file-text').value,'draft')
-  await click('#skill-file-cancel');assert.equal(el('#skill-file-text').value,'');assert.equal(el('#skill-body').closest('fieldset').disabled,false)
-  fillStudio('#skill-file-text','print("ok")');await click('#skill-file-save');await wait(()=>el('.studio-dialog .settings-message').textContent.includes('Файл skill сохранён'))
-  await click('.skill-tree-folder[data-path="rules/nested"]');fillStudio('#skill-file-name','rules/renamed');await click('#skill-path-rename');await wait(()=>el('[data-path="rules/renamed/check.py"]'))
+  await click('.skill-tree-file[data-path="SKILL.md"]');await wait(()=>el('.skill-file-title').textContent==='SKILL.md'&&el('#skill-file-text')?.value.startsWith('---'))
+  await click('.skill-tree-file[data-path="references/example.md"]');await wait(()=>el('#skill-file-text')?.value==='Reference content')
+  await click('#skill-save-all');await wait(()=>el('.studio-dialog .settings-message').textContent==='Все изменения сохранены')
+  await pathDialog('#skill-folder-add','rules/nested')
+  await pathDialog('#skill-file-add','check.py','rules/nested');await wait(()=>el('#skill-file-text'))
+  const cm=dom.window.__skillEditorTest,code=cm.EditorView.findFromDOM(el('.skill-text-pane:not([hidden]) .cm-editor'))
+  assert.ok(code)
+  code.dispatch({changes:{from:0,to:code.state.doc.length,insert:'draft'}})
+  assert.equal(el('#skill-file-text').value,'draft')
+  assert.equal(cm.undo(code),true);assert.equal(el('#skill-file-text').value,'')
+  assert.equal(cm.redo(code),true);assert.equal(el('#skill-file-text').value,'draft')
+  code.dispatch({changes:{from:0,to:code.state.doc.length,insert:'print("ok")'}})
+  // CodeMirror is active and emits highlighted tokens, rather than a plain textarea.
+  await wait(()=>all('.skill-text-pane:not([hidden]) .cm-line span').some(n=>n.textContent==='"ok"'))
+  await click('.skill-tree-folder[data-path="rules/nested"]')
+  await pathDialog('#skill-path-rename','renamed');await wait(()=>el('[data-path="rules/renamed/check.py"]'))
   await click('.skill-tree-file[data-path="rules/renamed/check.py"]');await wait(()=>el('#skill-file-text')?.value==='print("ok")')
-  fillStudio('#skill-file-name','references/check.py');await click('#skill-path-rename');await wait(()=>el('[data-path="references/check.py"]'))
+  await pathDialog('#skill-path-move',null,'references');await wait(()=>el('[data-path="references/check.py"]'))
+  // Internal drag-and-drop also flushes an in-memory draft before moving it.
+  fillStudio('#skill-file-text','print("dragged")')
+  const transfer={types:['application/x-qwen-skill-path'],getData:()=> 'references/check.py'}
+  const drop=new dom.window.Event('drop',{bubbles:true,cancelable:true});Object.defineProperty(drop,'dataTransfer',{value:transfer})
+  el('.skill-tree-root').dispatchEvent(drop)
+  await wait(()=>el('.skill-tree-file[data-path="check.py"]')&&el('#skill-file-text')?.value==='print("dragged")')
   await click('.skill-tree-folder[data-path="rules/renamed"]');await click('#skill-path-remove');await click('.chat-dialog .button-danger');await wait(()=>!el('.chat-dialog')&&!el('[data-path="rules/renamed"]'))
   const imagePath=join(base,'icon.png');await writeFile(imagePath,Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jNHEAAAAASUVORK5CYII=','base64'))
   h.folder=imagePath;await click('.skill-tree-root');await click('#skill-file-import');await wait(()=>el('[data-path="icon.png"]'));h.folder=folderA
-  await click('.skill-tree-file[data-path="icon.png"]');await wait(()=>el('.skill-asset-preview'));assert.match(el('.skill-asset-preview').src,/^data:image\/png;base64,/);assert.equal(el('#skill-file-text'),null)
-  await click('.skill-tree-file[data-path="SKILL.md"]');await wait(()=>el('#skill-file-text'));fillStudio('#skill-file-text',el('#skill-file-text').value.replace('---\n\n','metadata:\n  author: UI fixture\n---\n\n'));await click('#skill-file-save');await wait(()=>el('.studio-dialog .settings-message').textContent.includes('Файл skill сохранён'))
-  await click('#skill-raw-toggle');fillStudio('#skill-raw',el('#skill-raw').value.replace('UI test description','Changed raw description'));await submitStudio();await wait(()=>el('.studio-dialog .settings-message').textContent.includes('Skill сохранён'))
+  await click('.skill-tree-file[data-path="icon.png"]');await wait(()=>el('.skill-asset-preview'));assert.match(el('.skill-asset-preview').src,/^data:image\/png;base64,/)
+  await click('.skill-tree-file[data-path="SKILL.md"]');await wait(()=>el('#skill-file-text')?.value.startsWith('---'))
+  fillStudio('#skill-file-text',el('#skill-file-text').value.replace('---\n\n','metadata:\n  author: UI fixture\n---\n\n').replace('UI test description updated','Changed raw description'))
+  await click('#skill-tab-general');assert.equal(el('#skill-description').value,'Changed raw description')
+  // Closing/invoking flushes pending edits without requiring another explicit Save.
   await click('#skill-invoke');await wait(()=>!el('.studio-dialog'));assert.equal(el('#chat-input').value,'/ui-skill ')
   el('#chat-input').value='/';el('#chat-input').dispatchEvent(new dom.window.Event('input',{bubbles:true}));await wait(()=>!el('#slash-menu').hidden)
   assert.ok(all('.slash-item strong').some(n=>n.textContent==='/ui-skill'))
@@ -405,5 +434,5 @@ try {
   await click(`[data-reopen-workdir="${openDirId}"]`); await idle()
   assert.equal((await h.view()).chat.id, keptChatId)
   assert.deepEqual(errors, [])
-  console.log('PASS: package tree CRUD/moves, resource import/preview, SKILL raw save, file draft cancel/protection, skills/models/system-prompt UI, file drafts, raw editing, slash palette and local commands, persistent themes, MCP forms/probe/tool toggles/deletion/draft protection, navigation settings/tools buttons, persistent workdir close/reopen without data loss, native tool switches and protected tools, ' + ' settings dialog, scopes, toggles, search, persisted values, excluded MCP/skills editing, five-mode dropdown, selected mode reaches SDK, draft preserved,  chat rename/delete dialogs, cancel/delete double-submit, persistent custom titles, independent approvals through switches, final answer promotion and one collapsed block including thinking, legacy transcript folding, interrupted progress retained, ' + ' real main/store + DOM, multiple folders/chats, independent sessions, live permission, inert historical permission, Markdown/thinking/MCP replay, restart restores selected chat and messages without model calls, next prompt resumes the right session, no injected title HTML, existing 14px typography preserved.')
+  console.log('PASS: skill tabs, CodeMirror highlighting, autosave/draft switching, folder-picker moves, resource import/preview, shared SKILL metadata, skills/models/system-prompt UI, file drafts, raw editing, slash palette and local commands, persistent themes, MCP forms/probe/tool toggles/deletion/draft protection, navigation settings/tools buttons, persistent workdir close/reopen without data loss, native tool switches and protected tools, ' + ' settings dialog, scopes, toggles, search, persisted values, excluded MCP/skills editing, five-mode dropdown, selected mode reaches SDK, draft preserved,  chat rename/delete dialogs, cancel/delete double-submit, persistent custom titles, independent approvals through switches, final answer promotion and one collapsed block including thinking, legacy transcript folding, interrupted progress retained, ' + ' real main/store + DOM, multiple folders/chats, independent sessions, live permission, inert historical permission, Markdown/thinking/MCP replay, restart restores selected chat and messages without model calls, next prompt resumes the right session, no injected title HTML, existing 14px typography preserved.')
 } finally { await shutdown(); await rm(base, { recursive: true, force: true }) }
