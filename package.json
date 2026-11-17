@@ -1,6 +1,6 @@
 {
   "name": "qwen-desktop",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "A community desktop interface for Qwen Code",
   "license": "GPL-3.0-only",
   "main": "out/main/index.js",
