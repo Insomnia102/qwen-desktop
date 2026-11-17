@@ -1,57 +1,450 @@
-import {t,msg} from '../../shared/i18n'
-import type {QwenAPI,Reply} from '../../shared/qwen'
-import type {SkillDocument,SkillFile,SkillPathChange} from '../../shared/studio'
-import type {SettingsScope} from '../../shared/settings'
-import {el,button,input,panel,confirmAction} from './panel-kit'
-const val=<T>(r:Reply<T>):T=>{if(!r.ok)throw new Error(r.error);return r.value}
-const size=(n:number):string=>n<1024?msg`${n} Б`:n<1048576?msg`${(n/1024).toFixed(1)} КБ`:msg`${(n/1048576).toFixed(1)} МБ`
-export function skillFiles(api:QwenAPI,p:ReturnType<typeof panel>,scope:SettingsScope,doc:SkillDocument,selected:string,onRefresh:(doc:SkillDocument,path:string,message:string)=>void,onSelect:(path:string)=>void):HTMLElement {
- const section=el('section','skill-files'),heading=el('div','skill-package-heading');heading.append(el('h4','',t('Файлы пакета')),el('span','',msg`${doc.files.filter(f=>f.kind==='file').length} файлов`));section.append(heading,el('p','mcp-help',t('SKILL.md — точка входа. scripts, references, assets, rules и другие папки редактируются здесь. Скрипты при редактировании не запускаются.')))
- const layout=el('div','skill-package-layout'),tree=el('nav','skill-file-tree'),workspace=el('div','skill-file-workspace');tree.setAttribute('aria-label',t('Файлы и папки skill'));layout.append(tree,workspace)
- const tools=el('fieldset','skill-path-tools');tools.dataset.readonly=String(!doc.entry.editable)
- const path=input('',t('Например, scripts/check.py'));path.id='skill-file-name';path.setAttribute('aria-label',t('Путь нового файла, папки или новое имя'))
- const add=button(t('+ Файл')),folder=button(t('+ Папка')),upload=button(t('Добавить с диска')),rename=button(t('Переименовать / переместить')),remove=button(t('Убрать'),'button mcp-remove'),reload=button(t('Обновить дерево'))
- add.id='skill-file-add';folder.id='skill-folder-add';upload.id='skill-file-import';rename.id='skill-path-rename';remove.id='skill-path-remove';reload.id='skill-tree-reload';tools.append(path,add,folder,upload,rename,remove);section.append(tools,reload,layout)
- let current:SkillFile|undefined,chosen=doc.files.find(f=>f.path===selected)?.path??'SKILL.md',draft=false
- const fields=el('fieldset','mcp-form-fields'),editor=el('textarea','studio-editor');editor.readOnly=!doc.entry.editable;editor.id='skill-file-text';editor.rows=18;editor.spellcheck=false;editor.setAttribute('aria-label',t('Содержимое выбранного файла'))
- const title=el('h5','skill-file-title'),meta=el('p','mcp-help'),content=el('div','skill-file-content'),actions=el('div','mcp-form-actions'),save=button(t('Сохранить файл'),'button button-primary'),cancel=button(t('Отменить'));save.id='skill-file-save';cancel.id='skill-file-cancel';actions.append(cancel,save);fields.append(title,meta,content,actions);workspace.append(fields)
- function guardForm(blocked:boolean):void {const main=section.parentElement?.querySelector<HTMLFieldSetElement>('.mcp-form fieldset');if(main){main.dataset.draftBlocked=String(blocked);main.disabled=blocked||!doc.entry.editable}draft=blocked;p.setDirty(blocked)}
- function mark():void {if(!doc.entry.editable)return;guardForm(true);p.status(t('Есть несохранённые изменения файла.'))}
- editor.oninput=mark;editor.onkeydown=e=>{if(e.key==='Tab'&&!e.shiftKey){e.preventDefault();editor.setRangeText('  ',editor.selectionStart,editor.selectionEnd,'end');mark()}}
- const apply=(r:Reply<SkillDocument>,selection:string,message:string):void=>{const next=val(r);guardForm(false);onRefresh(next,selection,message)}
- function request(change:Omit<SkillPathChange,'revision'>,selection:string,message:string):void {if(p.canLeave())void p.perform(()=>api.changeSkillPath(scope,doc.entry.id,{...change,revision:doc.treeRevision}),r=>apply(r,selection,message))}
- function highlight():void {tree.querySelectorAll<HTMLElement>('[data-path]').forEach(n=>n.setAttribute('aria-current',String(n.dataset.path===chosen)))}
- function startFile(file:SkillFile):void {current=file;editor.value=file.text;content.replaceChildren(editor);meta.textContent=`${file.encoding??'utf8'} · ${file.lineEnding??'LF'} · ${size(doc.files.find(f=>f.path===file.path)?.size??0)}`;actions.hidden=!doc.entry.editable}
- function select(path:string,initial=false):void {
-  if(!initial&&!p.canLeave())return
-  chosen=path;onSelect(path);highlight();title.textContent=path||t('Корень пакета');current=undefined;actions.hidden=true;content.replaceChildren();meta.textContent=''
-  const node=doc.files.find(f=>f.path===path);rename.disabled=!path||path==='SKILL.md';remove.disabled=rename.disabled
-  if(!path||node?.kind==='directory'){meta.textContent=t('Папка. «Добавить с диска» помещает файл сюда. Для переименования укажите новый относительный путь выше.');return}
-  if(initial&&path==='SKILL.md'){startFile({path,text:doc.raw,revision:doc.entry.revision,encoding:'utf8',lineEnding:doc.raw.includes('\r\n')?'CRLF':'LF'});return}
-  void p.perform(async()=>{const asset=val(await api.inspectSkillFile(scope,doc.entry.id,path));return {asset,file:asset.kind==='text'?val(await api.getSkillFile(scope,doc.entry.id,path)):undefined}},({asset,file})=>{
-   if(file){startFile(file);return}
-   meta.textContent=msg`${size(asset.size)} · двоичный файл · хранится без изменений`
-   if(asset.kind==='image'&&asset.dataUrl){const image=el('img','skill-asset-preview');image.alt=path;image.src=asset.dataUrl;content.append(image)}
-   else content.append(el('p','mcp-help',t('Этот формат хранится как ресурс. Для замены уберите файл в архив и добавьте новую версию с диска. Текстовый редактор: UTF-8 и UTF-16 с BOM, до 512 КБ.')))
-  })
- }
- function build(parent:string,container:HTMLElement):void {
-  const ul=el('ul');container.append(ul)
-  for(const node of doc.files.filter(f=>f.path.slice(0,Math.max(0,f.path.lastIndexOf('/')))===parent).sort((a,b)=>a.kind===b.kind?a.path.localeCompare(b.path):a.kind==='directory'?-1:1)){
-   const li=el('li');ul.append(li);const name=node.path.split('/').pop()!
-   if(node.kind==='directory'){const details=el('details'),summary=el('summary','skill-tree-folder',name);summary.dataset.path=node.path;summary.title=node.path;details.open=true;summary.onclick=e=>{if(p.isBusy()||draft){e.preventDefault();p.canLeave();return}select(node.path)};details.append(summary);li.append(details);build(node.path,details)}
-   else{const b=button(name,'skill-tree-file');b.dataset.path=node.path;b.title=node.path+' · '+size(node.size);b.onclick=()=>select(node.path);li.append(b)}
+// SPDX-License-Identifier: GPL-3.0-only
+import { t, msg } from '../../shared/i18n'
+import type { QwenAPI, Reply } from '../../shared/qwen'
+import type { SkillPathChange } from '../../shared/studio'
+import { el, button, field, input, select, panel, confirmAction } from './panel-kit'
+import { SkillDrafts } from './skill-drafts'
+import { skillCodeEditor, type SkillCodeEditor } from './skill-code-editor'
+const value = <T>(r: Reply<T>): T => {
+  if (!r.ok) throw new Error(r.error)
+  return r.value
+}
+const parent = (path: string): string =>
+  path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : ''
+const basename = (path: string): string => path.split('/').pop() ?? path
+const mime = 'application/x-qwen-skill-path'
+
+export function skillFiles(api: QwenAPI, p: ReturnType<typeof panel>, drafts: SkillDrafts) {
+  const section = el('section', 'skill-files skill-files-v2'),
+    toolbar = el('fieldset', 'skill-path-tools'),
+    layout = el('div', 'skill-package-layout'),
+    tree = el('nav', 'skill-file-tree'),
+    workspace = el('div', 'skill-file-workspace'),
+    tabs = el('div', 'skill-file-tabs'),
+    content = el('div', 'skill-file-content')
+  toolbar.dataset.readonly = String(!drafts.document.entry.editable)
+  tree.setAttribute('aria-label', t('Файлы и папки skill'))
+  tabs.setAttribute('role', 'tablist')
+  const add = button(t('+ Файл')),
+    folder = button(t('+ Папка')),
+    upload = button(t('Добавить с диска')),
+    rename = button(t('Переименовать')),
+    move = button(t('Переместить')),
+    remove = button(t('Убрать'), 'button mcp-remove'),
+    reload = button(t('Обновить дерево')),
+    revert = button(t('Отменить изменения файла'))
+  for (const [node, id] of [
+    [add, 'skill-file-add'],
+    [folder, 'skill-folder-add'],
+    [upload, 'skill-file-import'],
+    [rename, 'skill-path-rename'],
+    [move, 'skill-path-move'],
+    [remove, 'skill-path-remove'],
+    [reload, 'skill-tree-reload'],
+    [revert, 'skill-file-cancel']
+  ] as const) {
+    node.id = id
+    toolbar.append(node)
   }
- }
- const root=button(t('Пакет /'),'skill-tree-root');root.onclick=()=>select('');tree.append(root);build('',tree)
- add.onclick=()=>request({action:'file',path:path.value.trim()},path.value.trim(),t('Пустой файл создан. Добавьте содержимое и сохраните.'))
- folder.onclick=()=>request({action:'directory',path:path.value.trim()},path.value.trim(),t('Папка создана.'))
- rename.onclick=()=>{if(chosen)request({action:'rename',path:chosen,target:path.value.trim()},path.value.trim(),t('Путь изменён. Обновите ссылки на него в инструкциях и скриптах при необходимости.'))}
- remove.onclick=()=>{if(!chosen||!p.canLeave())return;const deleting=chosen;confirmAction(msg`Убрать ${deleting}?`,t('Файл или папка со всем содержимым будет перенесена в desktop-skill-file-trash рядом с skills. Можно восстановить вручную.'),async()=>{apply(await api.changeSkillPath(scope,doc.entry.id,{action:'remove',path:deleting,revision:doc.treeRevision}),'SKILL.md',t('Перемещено в архив. Ссылки в инструкциях автоматически не изменяются.'))})}
- reload.onclick=()=>{if(p.canLeave())void p.perform(()=>api.getSkill(scope,doc.entry.id),r=>apply(r,chosen,t('Дерево обновлено.')))}
- upload.onclick=()=>{if(!p.canLeave())return;const selected=doc.files.find(f=>f.path===chosen),directory=selected?.kind==='directory'?chosen:chosen.includes('/')?chosen.slice(0,chosen.lastIndexOf('/')):'';void p.perform(()=>api.importSkillFile(scope,doc.entry.id,directory,doc.treeRevision),r=>{const next=val(r);if(next)onRefresh(next,chosen,t('Файл добавлен без изменения содержимого.'))})}
- cancel.onclick=()=>{if(current&&!p.isBusy()){editor.value=current.text;guardForm(false);p.status(t('Изменения файла отменены.'))}}
- save.onclick=()=>{if(!current||!doc.entry.editable)return;const file=current;void p.perform(async()=>{if(file.path==='SKILL.md')return api.saveRawSkill(scope,doc.entry.id,file.revision,editor.value);val(await api.saveSkillFile(scope,doc.entry.id,{...file,text:editor.value}));return api.getSkill(scope,doc.entry.id)},r=>apply(r,file.path,t('Файл skill сохранён. Применится со следующего запроса.')))}
- if(chosen==='SKILL.md')select(chosen,true);else void Promise.resolve().then(()=>{if(section.isConnected&&!p.isClosed())select(chosen,true)})
- return section
+  const heading = el('h5', 'skill-file-title'),
+    hint = el(
+      'p',
+      'skill-file-hint',
+      t('Изменения сохраняются автоматически. Файлы и папки можно перетаскивать в дереве.')
+    )
+  workspace.append(tabs, heading, content)
+  layout.append(tree, workspace)
+  section.append(toolbar, hint, layout)
+  let chosen = 'SKILL.md',
+    disposed = false,
+    sequence = 0
+  const editors = new Map<
+      string,
+      { element: HTMLElement; source: HTMLTextAreaElement; code: SkillCodeEditor }
+    >(),
+    opened = new Set<string>(),
+    expanded = new Set<string>()
+  const save = (): void => {
+    void drafts.flush().catch((error) => p.status(String(error.message ?? error), true))
+  }
+  function highlight(): void {
+    tree.querySelectorAll<HTMLDetailsElement>('details').forEach((details) => {
+      const path = details.querySelector<HTMLElement>('summary')?.dataset.path
+      if (path && chosen.startsWith(path + '/')) details.open = true
+    })
+    tree
+      .querySelectorAll<HTMLElement>('[data-path]')
+      .forEach((node) => node.setAttribute('aria-current', String(node.dataset.path === chosen)))
+    const fixed = !chosen || chosen === 'SKILL.md'
+    rename.disabled = fixed
+    move.disabled = fixed
+    remove.disabled = fixed
+    revert.disabled = !drafts.drafts.has(chosen)
+    tabs.replaceChildren()
+    for (const path of opened) {
+      const tab = button('', 'skill-file-tab')
+      tab.setAttribute('role', 'tab')
+      tab.setAttribute('aria-selected', String(chosen === path))
+      tab.title = path
+      tab.textContent = basename(path) + (drafts.pending.includes(path) ? ' •' : '')
+      tab.onclick = () => void reveal(path)
+      tabs.append(tab)
+    }
+  }
+  function folders(exclude = ''): Array<readonly [string, string]> {
+    return [
+      ['', t('Корень пакета')],
+      ...drafts.document.files
+        .filter(
+          (f) =>
+            f.kind === 'directory' &&
+            (!exclude || (f.path !== exclude && !f.path.startsWith(exclude + '/')))
+        )
+        .map((f) => [f.path, f.path] as const)
+    ]
+  }
+  function directory(): string {
+    return drafts.document.files.find((f) => f.path === chosen)?.kind === 'directory'
+      ? chosen
+      : parent(chosen)
+  }
+  async function structural(
+    change: Omit<SkillPathChange, 'revision'>,
+    selection: string
+  ): Promise<void> {
+    await p.perform(
+      async () => {
+        await drafts.change(change)
+        return selection
+      },
+      (path) => {
+        refresh()
+        void reveal(path)
+        p.status(
+          t('Путь изменён. Обновите ссылки на него в инструкциях и скриптах при необходимости.')
+        )
+      }
+    )
+  }
+  function pathDialog(action: 'file' | 'directory' | 'rename' | 'move'): void {
+    if (p.isBusy()) return
+    const selected = chosen,
+      title =
+        action === 'file'
+          ? t('Новый файл')
+          : action === 'directory'
+            ? t('Новая папка')
+            : action === 'rename'
+              ? t('Переименовать')
+              : t('Переместить'),
+      dialog = el('dialog', 'chat-dialog skill-path-dialog'),
+      form = el('form'),
+      fields = el('fieldset'),
+      name = input(action === 'rename' || action === 'move' ? basename(selected) : ''),
+      location = select(folders(action === 'move' ? selected : '')),
+      message = el('p', 'chat-dialog-error'),
+      actions = el('div', 'chat-dialog-actions'),
+      cancel = button(t('Отмена')),
+      confirm = button(t('Применить'), 'button button-primary')
+    name.id = 'skill-file-name'
+    name.required = true
+    name.setAttribute('aria-label', t('Имя'))
+    location.id = 'skill-file-directory'
+    location.value = directory()
+    confirm.type = 'submit'
+    dialog.append(el('h2', '', title), form)
+    form.append(fields, message, actions)
+    if (action !== 'move') field(fields, t('Имя'), name)
+    if (action !== 'rename') field(fields, t('Папка назначения'), location)
+    actions.append(cancel, confirm)
+    const close = (): void => {
+      dialog.close()
+      dialog.remove()
+    }
+    cancel.onclick = close
+    dialog.addEventListener('cancel', (e) => {
+      if (confirm.disabled) e.preventDefault()
+    })
+    dialog.addEventListener('close', () => dialog.remove())
+    form.onsubmit = async (e) => {
+      e.preventDefault()
+      if (!form.reportValidity() || confirm.disabled) return
+      confirm.disabled = true
+      cancel.disabled = true
+      fields.disabled = true
+      const target =
+        action === 'rename'
+          ? [parent(selected), name.value.trim()].filter(Boolean).join('/')
+          : [location.value, action === 'move' ? basename(selected) : name.value.trim()]
+              .filter(Boolean)
+              .join('/')
+      try {
+        await drafts.flush()
+        await drafts.change(
+          action === 'rename' || action === 'move'
+            ? { action: 'rename', path: selected, target }
+            : { action, path: target }
+        )
+        close()
+        refresh()
+        await reveal(target)
+        if (action === 'rename' || action === 'move')
+          p.status(
+            t('Путь изменён. Обновите ссылки на него в инструкциях и скриптах при необходимости.')
+          )
+      } catch (error) {
+        message.textContent = error instanceof Error ? error.message : String(error)
+      } finally {
+        confirm.disabled = false
+        cancel.disabled = false
+        fields.disabled = false
+      }
+    }
+    document.body.append(dialog)
+    dialog.showModal()
+    ;(action === 'move' ? location : name).focus()
+  }
+  async function reveal(path = chosen): Promise<void> {
+    if (disposed) return
+    for (const editor of editors.values()) editor.source.removeAttribute('id')
+    const ticket = ++sequence
+    chosen = path
+    heading.textContent = path || t('Корень пакета')
+    for (const editor of editors.values()) editor.element.hidden = true
+    content.querySelectorAll('.skill-resource').forEach((node) => node.remove())
+    highlight()
+    const node = drafts.document.files.find((f) => f.path === path)
+    if (!path || node?.kind === 'directory') {
+      content.append(
+        el('p', 'mcp-help skill-resource', t('Выберите файл или создайте новый в этой папке.'))
+      )
+      return
+    }
+    try {
+      let editor = editors.get(path)
+      if (!editor) {
+        const asset =
+          path === 'SKILL.md'
+            ? { kind: 'text' as const }
+            : value(await api.inspectSkillFile(drafts.scope, drafts.document.entry.id, path))
+        if (ticket !== sequence || disposed) return
+        if (asset.kind !== 'text') {
+          if (asset.kind === 'image' && 'dataUrl' in asset && asset.dataUrl) {
+            const image = el('img', 'skill-asset-preview skill-resource')
+            image.src = asset.dataUrl
+            image.alt = path
+            content.append(image)
+          } else
+            content.append(
+              el(
+                'p',
+                'mcp-help skill-resource',
+                t(
+                  'Этот формат хранится как ресурс. Для замены уберите файл в архив и добавьте новую версию с диска. Текстовый редактор: UTF-8 и UTF-16 с BOM, до 512 КБ.'
+                )
+              )
+            )
+          return
+        }
+        const draft = await drafts.file(path)
+        if (ticket !== sequence || disposed) return
+        const element = el('fieldset', 'skill-text-pane'),
+          source = el('textarea')
+        element.dataset.readonly = String(!drafts.document.entry.editable)
+        element.disabled = p.isBusy() || !drafts.document.entry.editable
+        source.readOnly = !drafts.document.entry.editable
+        source.value = draft.text
+        source.spellcheck = false
+        source.setAttribute('aria-label', t('Содержимое выбранного файла'))
+        source.oninput = () => drafts.edit(path, source.value)
+        element.append(source)
+        content.append(element)
+        const code = skillCodeEditor(source, path, save)
+        editor = { element, source, code }
+        editors.set(path, editor)
+      }
+      editor.element.hidden = false
+      opened.add(path)
+      highlight()
+      for (const item of editors.values()) item.source.removeAttribute('id')
+      editor.source.id = 'skill-file-text'
+    } catch (error) {
+      if (ticket === sequence && !disposed)
+        p.status(error instanceof Error ? error.message : String(error), true)
+    }
+  }
+  function dropTarget(node: HTMLElement, target: string): void {
+    node.ondragover = (e) => {
+      if (p.isBusy() || !drafts.document.entry.editable || !e.dataTransfer?.types.includes(mime))
+        return
+      e.preventDefault()
+      e.dataTransfer.dropEffect = 'move'
+      node.classList.add('skill-drop-target')
+    }
+    node.ondragleave = () => node.classList.remove('skill-drop-target')
+    node.ondrop = (e) => {
+      node.classList.remove('skill-drop-target')
+      const path = e.dataTransfer?.getData(mime)
+      if (!path || p.isBusy() || !drafts.document.entry.editable) return
+      e.preventDefault()
+      e.stopPropagation()
+      if (
+        path === 'SKILL.md' ||
+        !drafts.document.files.some((f) => f.path === path) ||
+        path === target ||
+        target.startsWith(path + '/')
+      )
+        return
+      const destination = [target, basename(path)].filter(Boolean).join('/')
+      if (destination !== path)
+        void structural({ action: 'rename', path, target: destination }, destination)
+    }
+  }
+  function build(parentPath: string, container: HTMLElement): void {
+    const ul = el('ul')
+    container.append(ul)
+    for (const node of drafts.document.files
+      .filter((f) => parent(f.path) === parentPath)
+      .sort((a, b) =>
+        a.kind === b.kind ? a.path.localeCompare(b.path) : a.kind === 'directory' ? -1 : 1
+      )) {
+      const li = el('li')
+      ul.append(li)
+      let control: HTMLElement
+      if (node.kind === 'directory') {
+        const details = el('details'),
+          summary = el('summary', 'skill-tree-folder', basename(node.path))
+        details.open = expanded.has(node.path) || chosen.startsWith(node.path + '/')
+        details.ontoggle = () => {
+          if (details.open) expanded.add(node.path)
+          else expanded.delete(node.path)
+        }
+        summary.onclick = () => void reveal(node.path)
+        details.append(summary)
+        li.append(details)
+        build(node.path, details)
+        control = summary
+        dropTarget(summary, node.path)
+      } else {
+        const file = button(basename(node.path), 'skill-tree-file')
+        file.onclick = () => void reveal(node.path)
+        li.append(file)
+        control = file
+      }
+      control.dataset.path = node.path
+      control.title = node.path
+      control.draggable = drafts.document.entry.editable && node.path !== 'SKILL.md'
+      control.ondragstart = (e) => {
+        if (p.isBusy() || !e.dataTransfer) {
+          e.preventDefault()
+          return
+        }
+        e.dataTransfer.setData(mime, node.path)
+        e.dataTransfer.effectAllowed = 'move'
+      }
+    }
+  }
+  function refresh(): void {
+    ++sequence
+    for (const editor of editors.values()) editor.code.destroy()
+    editors.clear()
+    opened.forEach((path) => {
+      if (!drafts.document.files.some((f) => f.path === path)) opened.delete(path)
+    })
+    content.replaceChildren()
+    tree.replaceChildren()
+    const root = button(t('Пакет /'), 'skill-tree-root')
+    root.dataset.path = ''
+    root.onclick = () => void reveal('')
+    dropTarget(root, '')
+    tree.append(root)
+    build('', tree)
+    highlight()
+  }
+  add.onclick = () => pathDialog('file')
+  folder.onclick = () => pathDialog('directory')
+  rename.onclick = () => pathDialog('rename')
+  move.onclick = () => pathDialog('move')
+  revert.onclick = () => {
+    const path = chosen
+    if (!drafts.drafts.has(path)) return
+    confirmAction(
+      t('Отменить изменения файла?'),
+      t(
+        'Черновик этого файла будет заменён последней версией с диска. Остальные черновики сохранятся.'
+      ),
+      async () => {
+        await drafts.revert(path)
+      },
+      t('Отменить изменения')
+    )
+  }
+  remove.onclick = () => {
+    const path = chosen
+    if (!path || path === 'SKILL.md') return
+    confirmAction(
+      msg`Убрать ${path}?`,
+      t(
+        'Файл или папка со всем содержимым будет перенесена в desktop-skill-file-trash рядом с skills. Можно восстановить вручную.'
+      ),
+      async () => {
+        await drafts.change({ action: 'remove', path })
+        refresh()
+        await reveal('SKILL.md')
+      }
+    )
+  }
+  upload.onclick = () => {
+    void p.perform(
+      async () => {
+        await drafts.flush()
+        return value(
+          await api.importSkillFile(
+            drafts.scope,
+            drafts.document.entry.id,
+            directory(),
+            drafts.document.treeRevision
+          )
+        )
+      },
+      (document) => {
+        if (document) {
+          drafts.accept(document)
+          refresh()
+          void reveal(chosen)
+        }
+      }
+    )
+  }
+  reload.onclick = () => {
+    void p.perform(
+      () => drafts.reload(),
+      () => {
+        refresh()
+        void reveal(drafts.document.files.some((f) => f.path === chosen) ? chosen : 'SKILL.md')
+      }
+    )
+  }
+  const unsubscribe = drafts.subscribe(() => {
+    for (const [path, editor] of editors) {
+      const draft = drafts.drafts.get(path)
+      if (draft && editor.source.value !== draft.text) {
+        editor.source.value = draft.text
+        editor.code.setValue(draft.text)
+      }
+    }
+    highlight()
+  })
+  refresh()
+  return {
+    element: section,
+    reveal,
+    refresh,
+    dispose: () => {
+      disposed = true
+      ++sequence
+      unsubscribe()
+      for (const editor of editors.values()) editor.code.destroy()
+    }
+  }
 }

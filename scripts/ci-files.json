@@ -110,6 +110,9 @@
     "tests/window-close.test.mjs",
     "tests/workdirs-tools.test.mjs",
     "tsconfig.ci.json",
-    "types/ci-assets.d.ts"
+    "types/ci-assets.d.ts",
+    "src/renderer/src/skill-code-editor.ts",
+    "src/renderer/src/skill-drafts.ts",
+    "tests/skill-drafts.test.mjs"
   ]
 }
