@@ -1,6 +1,6 @@
 import {test} from 'node:test'
 import assert from 'node:assert/strict'
-import {mkdtemp,mkdir,rm,readFile,writeFile,readdir,stat,symlink,chmod,realpath} from 'node:fs/promises'
+import {mkdtemp,mkdir,rm,readFile,writeFile,readdir,stat,symlink,chmod,realpath,truncate} from 'node:fs/promises'
 import {tmpdir} from 'node:os'
 import {join,dirname} from 'node:path'
 import {loadTypeScript} from './load-typescript.mjs'
@@ -67,7 +67,7 @@ test('file/folder CRUD, nested rename, soft removal and stale manifests',()=>use
  d=change(s,d,f,'file','rules/new-empty/test.toml');assert.equal(s.getFile('project',d.entry.id,'rules/new-empty/test.toml',f.project).text,'')
  d=change(s,d,f,'rename','rules/new-empty','references/renamed');assert.ok(d.files.some(n=>n.path==='references/renamed/test.toml'));assert.ok(!d.files.some(n=>n.path==='rules/new-empty'))
  assert.throws(()=>change(s,d,f,'rename','references','references/renamed/subfolder'),/внутрь себя/)
- assert.throws(()=>change(s,d,f,'file','SKILL.md'),/существуют/);assert.throws(()=>change(s,d,f,'remove','SKILL.md'),/точка входа/);assert.throws(()=>change(s,d,f,'rename','SKILL.md','OTHER.md'),/точка входа/)
+ assert.throws(()=>change(s,d,f,'file','SKILL.md'),/точка входа/);assert.throws(()=>change(s,d,f,'remove','SKILL.md'),/точка входа/);assert.throws(()=>change(s,d,f,'rename','SKILL.md','OTHER.md'),/точка входа/)
  const stale=d;await writeFile(join(dirname(d.entry.path),'rules/style.md'),'external change');assert.throws(()=>change(s,stale,f,'directory','unwanted'),/изменились/)
  d=s.get('project',d.entry.id,f.project);d=change(s,d,f,'remove','references/renamed');assert.ok(!d.files.some(n=>n.path.startsWith('references/renamed')))
  const trash=join(f.project,'.qwen/desktop-skill-file-trash'),removed=(await readdir(trash))[0];assert.equal(await readFile(join(trash,removed,'test.toml'),'utf8'),'')
@@ -84,12 +84,12 @@ test('path escape, Windows device names, links and invalid text never rewrite re
  for(const path of ['../outside','nested/../../out','C:/escape','rules\\escape','/tmp/escape','rules/NUL.txt','rules/file.','rules/.git/config','node_modules/x'])assert.throws(()=>change(s,d,f,'file',path),/путь/)
  const file=s.getFile('project',d.entry.id,'scripts/check.py',f.project);await writeFile(join(dirname(d.entry.path),'scripts/check.py'),'outside');assert.throws(()=>s.saveFile('project',d.entry.id,{...file,text:'overwritten'},f.project),/изменился/)
  const binary=await readFile(join(dirname(d.entry.path),'assets/template.bin'));assert.throws(()=>s.saveFile('project',d.entry.id,{path:'assets/template.bin',revision:'x',text:'bad'},f.project),/Двоичный/);assert.deepEqual(await readFile(join(dirname(d.entry.path),'assets/template.bin')),binary)
- if(process.platform!=='win32'){await symlink(f.input,join(dirname(d.entry.path),'linked'));assert.throws(()=>s.getFile('project',d.entry.id,'linked/SKILL.md',f.project),/Ссылки/);assert.throws(()=>s.get('project',d.entry.id,f.project),/Ссылки/)}
+ if(process.platform!=='win32'){await symlink(f.input,join(dirname(d.entry.path),'linked'));assert.throws(()=>s.getFile('project',d.entry.id,'linked/SKILL.md',f.project),/Ссылки/);assert.ok(s.get('project',d.entry.id,f.project).treeWarnings.some(w=>w.includes('linked')))}
 }))
-test('add a binary file from disk keeps bytes, never overwrites; package limits are enforced',()=>use(async(f,s)=>{
+test('binary resources keep bytes and cannot overwrite existing files; packages above 20 MB import',()=>use(async(f,s)=>{
  let d=s.importDirectory('project',f.input,f.project);const external=join(f.base,'new.bin');await writeFile(external,Buffer.from([0,128,255]))
- d=s.importFile('project',d.entry.id,external,'assets',d.treeRevision,f.project);assert.deepEqual(await readFile(join(dirname(d.entry.path),'assets/new.bin')),Buffer.from([0,128,255]));assert.throws(()=>s.importFile('project',d.entry.id,external,'assets',d.treeRevision,f.project),/существует/)
- await writeFile(join(f.input,'huge.bin'),Buffer.alloc(20_000_001));assert.throws(()=>s.importDirectory('user',f.input,f.project),/20 МБ/);assert.equal(s.list('user',f.project).entries.length,0)
+ d=s.importFile('project',d.entry.id,external,'assets',d.treeRevision,f.project);assert.deepEqual(await readFile(join(dirname(d.entry.path),'assets/new.bin')),Buffer.from([0,128,255]));assert.throws(()=>s.importFile('project',d.entry.id,external,'assets',d.treeRevision,f.project),/существу/)
+ await writeFile(join(f.input,'huge.bin'),'');await truncate(join(f.input,'huge.bin'),21_000_001);const imported=s.importDirectory('user',f.input,f.project);assert.equal(s.inspectFile('user',imported.entry.id,'huge.bin',f.project).size,21_000_001)
 }))
 test('package IPC supports create, inspect and rename and rejects invalid scopes',()=>use(async(f)=>{
  const h=await harness({userData:join(f.base,'app'),folder:f.project});try{
@@ -100,14 +100,20 @@ test('package IPC supports create, inspect and rename and rejects invalid scopes
   assert.equal((await h.invoke('change-skill-path','bad',d.entry.id,{})).ok,false)
  }finally{await h.close()}
 }))
-test('moves validate descendant depth before mutation and nested mkdir respects directory budget',()=>use(async(f,s)=>{
+test('large and deep packages stay editable with bounded metadata and paged directories',()=>use(async(f,s)=>{
  let d=s.importDirectory('project',f.input,f.project)
- const deep=Array.from({length:11},(_,i)=>'d'+i).join('/');d=change(s,d,f,'directory',deep)
+ const deep=Array.from({length:63},(_,i)=>'d'+i).join('/');d=change(s,d,f,'directory',deep)
  assert.throws(()=>change(s,d,f,'rename','rules',deep+'/rules'),/путь/)
  assert.ok(s.get('project',d.entry.id,f.project).files.some(n=>n.path==='rules/style.md'))
- const root=dirname(d.entry.path);let count=d.files.filter(n=>n.kind==='directory').length
- while(count<498){await mkdir(join(root,'budget-'+count));count++}
- d=s.get('project',d.entry.id,f.project)
- assert.throws(()=>change(s,d,f,'directory','new/deep'),/500 каталогов/)
- assert.ok(!s.get('project',d.entry.id,f.project).files.some(n=>n.path==='new'))
+ const root=dirname(d.entry.path);await mkdir(join(root,'many'));await Promise.all(Array.from({length:605},(_,i)=>writeFile(join(root,'many',`file-${i}.txt`),'Small text')))
+ d=s.get('project',d.entry.id,f.project);assert.equal(d.treeComplete,false)
+ let offset=0,paths=[];do{const page=s.directory('project',d.entry.id,'many',offset,f.project);assert.ok(page.files.length<=200);paths.push(...page.files.map(n=>n.path));offset=page.nextOffset}while(offset!==null)
+ assert.equal(paths.length,605);assert.equal(new Set(paths).size,605)
+ d=change(s,d,f,'directory','new/deep');assert.ok(d.files.some(n=>n.path==='new'))
+ await writeFile(join(root,'.skillignore'),'many/\n');d=s.get('project',d.entry.id,f.project);assert.ok(!d.files.some(n=>n.path==='many'));assert.equal(await readFile(join(root,'many/file-604.txt'),'utf8'),'Small text')
+}))
+test('snapshot budget fails without a partial import and exact .skillignore paths exclude runtime repositories',()=>use(async(f,s)=>{
+ const huge=join(f.input,'runtime/repos/cache.bin');await mkdir(dirname(huge),{recursive:true});await writeFile(huge,'');await truncate(huge,512_000_001)
+ assert.throws(()=>s.importDirectory('user',f.input,f.project),/512 MB/);assert.equal(s.list('user',f.project).entries.length,0)
+ await writeFile(join(f.input,'.skillignore'),'# downloaded repositories\nruntime/repos/\n');const doc=s.importDirectory('user',f.input,f.project);assert.ok(doc.files.some(n=>n.path==='SKILL.md'));assert.ok(!doc.files.some(n=>n.path.startsWith('runtime/repos')));assert.equal((await stat(huge)).size,512_000_001)
 }))

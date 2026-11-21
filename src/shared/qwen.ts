@@ -43,6 +43,7 @@ export interface WorkspaceView {
   mode: ApprovalMode
   modeOverride: boolean
   modelProfileId?: string | null
+  skillTestsRunning?:boolean
   modelLabel?: string
 }
 
@@ -61,6 +62,26 @@ export type QwenEvent = { requestId: string } & (
 )
 
 export interface QwenAPI {
+  planSkillTests(request:import('./skill-tests').PlanSkillTestsRequest):Promise<Reply<import('./skill-tests').SkillTestSuiteInput>>
+  replySkillTest(id:string,text:string|null):Promise<Reply>
+  getSkillTests():Promise<Reply<import('./skill-tests').SkillTestsView>>
+  saveSkillTestSuite(input:import('./skill-tests').SkillTestSuiteInput):Promise<Reply<import('./skill-tests').SkillTestSuite>>
+  deleteSkillTestSuite(id:string,revision:string):Promise<Reply>
+  runSkillTestSuite(id:string,caseIds?:string[]):Promise<Reply<import('./skill-tests').SkillTestBatch>>
+  deleteSkillTestRun(id:string):Promise<Reply>
+  clearSkillTestHistory():Promise<Reply>
+  getSkillTestRun(id:string):Promise<Reply<import('./skill-tests').SkillTestBatch>>
+  cancelSkillTests():Promise<Reply>
+  approveSkillTest(id:string,decision:'allow-once'|'allow-run'|'deny'):Promise<Reply>
+  getSkillTestArtifact(batchId:string,caseId:string,path:string):Promise<Reply<import('./skill-tests').TestArtifact>>
+  revealSkillTestRun(batchId:string,caseId:string):Promise<Reply>
+  importSkillTestSuite():Promise<Reply<import('./skill-tests').SkillTestSuite|null>>
+  exportSkillTestSuite(id:string):Promise<Reply>
+  exportSkillTestRun(id:string,format?:'html'|'json'):Promise<Reply>
+  runSkillCreator(request:import('./skill-tests').CreatorRequest):Promise<Reply<import('./skill-tests').SkillTestBatch>>
+  installCreatedSkill(batchId:string):Promise<Reply<SkillDocument>>
+  onSkillTestEvent(callback:(event:import('./skill-tests').SkillTestEvent)=>void):()=>void
+
   prepareRuntime():Promise<Reply<ConnectionState>>
   cancelRuntime():Promise<Reply>
   getConnectionState():Promise<Reply<ConnectionState>>
@@ -98,6 +119,7 @@ export interface QwenAPI {
   toggleSkill(scope: 'user'|'project', id: string, enabled: boolean, revision: string): Promise<Reply<SkillsView>>
   deleteSkill(scope: 'user'|'project', id: string, revision: string): Promise<Reply<SkillsView>>
   importSkill(scope: 'user'|'project'): Promise<Reply<SkillDocument|null>>
+  getSkillDirectory(scope:'user'|'project',id:string,path:string,offset:number):Promise<Reply<import('./studio').SkillDirectoryPage>>
   getSkillFile(scope: 'user'|'project', id: string, path: string): Promise<Reply<SkillFile>>
   inspectSkillFile(scope: 'user'|'project', id: string, path: string): Promise<Reply<SkillAsset>>
   changeSkillPath(scope: 'user'|'project', id: string, request: SkillPathChange): Promise<Reply<SkillDocument>>

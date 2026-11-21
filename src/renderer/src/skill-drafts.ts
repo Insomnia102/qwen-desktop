@@ -76,6 +76,10 @@ export class SkillDrafts {
       error: null
     })
   }
+  private updateDocument(document:SkillDocument):void{
+    if(document.treeComplete===false){const loaded=new Map(this.document.files.map(f=>[f.path,f]));for(const file of document.files)loaded.set(file.path,file);document.files=[...loaded.values()]}
+    this.document=document
+  }
   get dirty(): boolean {
     return [...this.drafts.values()].some((d) => d.text !== d.base.text)
   }
@@ -134,7 +138,7 @@ export class SkillDrafts {
               const document = value(
                 await this.api.saveRawSkill(this.scope, this.document.entry.id, base.revision, text)
               )
-              this.document = document
+              this.updateDocument(document)
               draft.base = { ...base, text: document.raw, revision: document.entry.revision }
               if (draft.text === text) draft.text = document.raw
             } else {
@@ -142,7 +146,7 @@ export class SkillDrafts {
                 await this.api.saveSkillFile(this.scope, this.document.entry.id, { ...base, text })
               )
               if (draft.text === text) draft.text = draft.base.text
-              this.document = value(await this.api.getSkill(this.scope, this.document.entry.id))
+              this.updateDocument(value(await this.api.getSkill(this.scope, this.document.entry.id)))
             }
             draft.error = null
           } catch (error) {
@@ -174,7 +178,7 @@ export class SkillDrafts {
             lineEnding: document.raw.includes('\r\n') ? 'CRLF' : 'LF'
           }
         : value(await this.api.getSkillFile(this.scope, this.document.entry.id, path))
-    this.document = document
+    this.updateDocument(document)
     this.drafts.set(path, { base, text: base.text, error: null })
     this.error = ''
     this.notify()

@@ -1,0 +1,5 @@
+# Keep text checkouts consistent across Windows, Linux and macOS.
+* text=auto eol=lf
+
+# The pinned upstream snapshot uses LF. Its bytes are checked against provenance.
+resources/skills/skill-creator/** text=auto eol=lf

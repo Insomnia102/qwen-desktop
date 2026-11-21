@@ -73,6 +73,7 @@ async function boot() {
   dom.window.HTMLDialogElement.prototype.showModal = function () { this.open = true }
   dom.window.HTMLDialogElement.prototype.close = function () { this.open = false }
   dom.window.api = {
+    getSkillDirectory:(...args)=>h.invoke('get-skill-directory',...args),getSkillTests:()=>h.invoke('get-skill-tests'),onSkillTestEvent:()=>()=>{},
     prepareRuntime:()=>h.invoke('prepare-runtime'),cancelRuntime:()=>h.invoke('cancel-runtime'),
     getConnectionState:async()=>({ok:true,value:{preferences:{version:1,language:'ru',onboardingCompleted:true},runtimeReady:true,configurationFound:true,profiles:[],defaultModelId:null,selectedModelId:null,secureStorage:true,nativeConfigurationFound:true}}),setUiLanguage:l=>h.invoke('set-ui-language',l),completeOnboarding:(id,skip)=>h.invoke('complete-onboarding',id,skip),testConnection:id=>h.invoke('test-connection',id),cancelConnectionTest:()=>h.invoke('cancel-connection-test'),
     getStudio: scope => h.invoke('get-studio',scope), saveModel: r=>h.invoke('save-model',r), deleteModel:(id,rev)=>h.invoke('delete-model',id,rev), selectModel:id=>h.invoke('select-model',id), savePrompt:r=>h.invoke('save-prompt',r),
@@ -169,7 +170,7 @@ try {
   assert.equal(el('.settings-dialog'), null)
   await click('#choose-workdir'); await idle()
 
-  assert.equal(el('#nav-skills').nextElementSibling.id,'open-system-prompt')
+  assert.equal(el('#nav-skills').nextElementSibling.id,'open-skill-tests');assert.equal(el('#open-skill-tests').nextElementSibling.id,'open-system-prompt')
   assert.equal(el('#new-chat').closest('.chat-header'),el('.chat-header'))
   assert.equal(el('#stop-qwen').closest('.chat-header'),el('.chat-header'))
   const fillStudio=(selector,value)=>{const n=el(selector);assert.ok(n,selector);n.value=value;n.dispatchEvent(new dom.window.Event('input',{bubbles:true}))}

@@ -1,5 +1,5 @@
 import {t} from '../shared/i18n'
-import { app, BrowserWindow, dialog, ipcMain, nativeTheme, safeStorage, type IpcMainInvokeEvent } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, nativeTheme, safeStorage, shell, type IpcMainInvokeEvent } from 'electron'
 import { randomUUID } from 'node:crypto'
 import { realpath, stat } from 'node:fs/promises'
 import { existsSync,readFileSync } from 'node:fs'
@@ -23,6 +23,9 @@ import {checkConnection} from './connection-check'
 import {isUiLanguage,type ConnectionState} from '../shared/desktop'
 import { StudioStore } from './studio-store'
 import { SkillsStore } from './skills-store'
+import {SkillTestsService} from './skill-tests-service'
+import type {SkillTestSuite} from '../shared/skill-tests'
+import type {TestEnvironment} from './skill-test-runner'
 import { DESKTOP_COMMANDS, QWEN_COMMANDS, type ModelSaveRequest, type PromptSaveRequest, type SkillSaveRequest, type SkillFile, type SkillPathChange, type SlashCommand } from '../shared/studio'
 import type { SettingsScope } from '../shared/settings'
 
@@ -56,6 +59,21 @@ let skillsStore: SkillsStore | undefined
 let desktopStore:DesktopStore|undefined
 let runtimeManager:RuntimeManager|undefined
 const runtimeOperations=new Map<number,AbortController>()
+let skillTestsService:SkillTestsService|undefined
+function skillTests():SkillTestsService{
+ if(!skillTestsService)skillTestsService=new SkillTestsService({directory:join(app.getPath('userData'),'skill-tests'),resources:join(app.getAppPath(),'resources').replace(/([\\/])app\.asar([\\/])/,'$1app.asar.unpacked$2'),skills:skills(),launch:query,environment:testEnvironment,changed:(batchId,active)=>{for(const state of states.values())if(!state.window.isDestroyed()&&!state.contents.isDestroyed())state.contents.send('qwen:skill-test-event',{type:'changed',batchId,active})}})
+ return skillTestsService
+}
+async function testEnvironment(suite:SkillTestSuite):Promise<TestEnvironment>{
+ const runtime=await runtimes().inspect();if(!runtime.ready)throw new Error('Qwen CLI is unavailable. Open Model connection to install it.')
+ const cwd=suite.sourceCwd,info=studio().view(null,cwd),profileId=suite.modelProfileId??info.defaultModelId,chosen=info.profiles.find(p=>p.id===profileId)
+ if(suite.modelProfileId&&!chosen)throw new Error('Model profile not found');if(chosen)settings().validateStudioModel(chosen,cwd)
+ const profile=studio().runtime('skill-tests',cwd??app.getPath('home'),process.env,profileId)
+ if(!chosen&&!settings().connectionConfigured(cwd))throw new Error('Configure a model before running skill tests')
+ const config=settings().testRuntimeConfig(cwd),servers:Record<string,McpConfig>=Object.create(null)
+ if(suite.useMcp)for(const entry of mcp().loadMcp(cwd?'project':'user',cwd).servers){const project=['Текущая папка','.mcp.json проекта'].includes(entry.source);if(entry.enabled&&(!project||cwd&&consents().has(cwd,entry.name,entry.config))){const value={...entry.config};delete value.scope;servers[entry.name]=value}}
+ return {bootstrap:bootstrapPath(),cli:cliPath(),model:profile.model,authType:profile.authType,env:profile.env,systemPrompt:profile.systemPrompt,disabledTools:settings().disabledCoreTools(cwd),...config,mcpServers:servers,modelLabel:chosen?.label??'Native Qwen configuration'}
+}
 function runtimes():RuntimeManager {
  if(!runtimeManager){const root=dirname(require.resolve('@qwen-code/sdk/package.json'));const version=readFileSync(join(root,'dist','BUNDLED_CLI_VERSION'),'utf8').trim();if(!/^\d+\.\d+\.\d+(?:-[\w.-]+)?$/.test(version))throw new Error('Invalid bundled CLI version');runtimeManager=new RuntimeManager({directory:join(app.getPath('userData'),'runtimes'),version})}
  return runtimeManager
@@ -159,14 +177,14 @@ function view(state: WindowState): WorkspaceView {
   try { mode = modeFor(state) } catch (error) { warnings.push(errorText(error)) }
   let modelProfileId:string|null=null,modelLabel='Из настроек Qwen'
   try {const info=studio().view(state.chatId,selectedCwd(state));modelProfileId=info.selectedModelId;modelLabel=info.profiles.find(p=>p.id===modelProfileId)?.label??modelLabel}catch(error){warnings.push(errorText(error))}
-  return { index: { ...db.snapshot(), activeChatId: state.chatId }, chat, warnings, modelProfileId,modelLabel,
+  return { index: { ...db.snapshot(), activeChatId: state.chatId }, chat, warnings, modelProfileId,modelLabel,skillTestsRunning:Boolean(skillTestsService?.busy),
     allowAll: state.chatId !== null && state.approvedChats.has(state.chatId), mode,
     modeOverride: state.chatId !== null && (state.modes.has(state.chatId) || state.approvedChats.has(state.chatId)) }
 }
 
 function cancel(state: WindowState): void {
   runtimeOperations.get(state.id)?.abort(); connectionChecks.get(state.id)?.abort()
-  probes.get(state.id)?.abort()
+  probes.get(state.id)?.abort();skillTestsService?.cancel(state.id)
   if (!state.run) return
   state.run?.abort.abort()
   for (const pending of state.run?.permissions.values() ?? []) pending.finish('deny')
@@ -190,6 +208,7 @@ export function stopQwen(): void {
   for (const controller of runtimeOperations.values()) controller.abort()
   for (const controller of connectionChecks.values()) controller.abort()
   for (const controller of probes.values()) controller.abort()
+  skillTestsService?.cancel()
   for (const state of states.values()) cancel(state)
   try { store?.flush() } catch (error) { storageError(error) }
 }
@@ -346,10 +365,34 @@ async function runPrompt(state: WindowState, run: Run, prompt: string, cwd: stri
 export function registerQwenIPC(): void {
   const scopeOf=(value:unknown):SettingsScope=>{if(value!=='user'&&value!=='project')throw new Error('Неизвестная область');return value}
   const textOf=(value:unknown):string=>{if(typeof value!=='string'||value.length>1000)throw new Error('Некорректный идентификатор');return value}
-  const idle=(state:WindowState):void=>{if(state.selecting||runtimeOperations.size||connectionChecks.size||probes.size||[...states.values()].some(s=>s.run))throw new Error('Дождитесь завершения текущей операции')}
+  const idle=(state:WindowState):void=>{if(state.selecting||runtimeOperations.size||connectionChecks.size||probes.size||skillTestsService?.busy||[...states.values()].some(s=>s.run))throw new Error('Дождитесь завершения текущей операции')}
   const handle=(name:string,fn:(state:WindowState,...args:unknown[])=>unknown,mutating=false):void=>{
     ipcMain.handle(`qwen:${name}`,async(event,...args:unknown[])=>{try{const state=stateFor(event);if(mutating)idle(state);return ok(await fn(state,...args))}catch(error){return fail(errorText(error))}})
   }
+  handle('plan-skill-tests',(state,request)=>skillTests().plan(state.id,request,selectedCwd(state)),true)
+  handle('reply-skill-test',(state,id,text)=>{if(text!==null&&(typeof text!=='string'||text.length>8000))throw Error('Invalid dialogue reply');skillTests().runner.reply(state.id,textOf(id),text as string|null)})
+  handle('get-skill-tests',state=>skillTests().view(state.id))
+  handle('save-skill-test-suite',(state,input)=>skillTests().save(input,selectedCwd(state)),true)
+  handle('delete-skill-test-suite',(_state,id,revision)=>skillTests().store.remove(textOf(id),textOf(revision)),true)
+  handle('run-skill-test-suite',async(state,id,cases)=>{state.selecting=true;try{return await skillTests().run(state.id,textOf(id),cases)}finally{state.selecting=false}},true)
+  handle('delete-skill-test-run',(_state,id)=>skillTests().removeRun(textOf(id)))
+  handle('clear-skill-test-history',()=>skillTests().clearHistory())
+  handle('get-skill-test-run',(_state,id)=>skillTests().store.run(textOf(id)))
+  handle('cancel-skill-tests',state=>skillTests().cancel(state.id))
+  handle('approve-skill-test',(state,id,decision)=>{if(decision!=='allow-once'&&decision!=='allow-run'&&decision!=='deny')throw new Error('Invalid test permission');skillTests().runner.approve(state.id,textOf(id),decision)})
+  handle('get-skill-test-artifact',(_state,id,caseId,path)=>skillTests().runner.artifact(textOf(id),textOf(caseId),textOf(path)))
+  handle('reveal-skill-test-run',async(_state,id,caseId)=>{const message=await shell.openPath(skillTests().runner.workspace(textOf(id),textOf(caseId)));if(message)throw new Error(message)})
+  handle('import-skill-test-suite',async state=>{state.selecting=true;try{const file=await dialog.showOpenDialog(state.window,{properties:['openFile'],filters:[{name:'JSON',extensions:['json']}],title:'Import test scenarios'});return file.canceled||!file.filePaths[0]?null:skillTests().import(file.filePaths[0],selectedCwd(state))}finally{state.selecting=false}},true)
+  const exportTests=async(state:WindowState,id:unknown,report:boolean,format:unknown='html'):Promise<void>=>{
+    if(format!=='html'&&format!=='json')throw Error('Unknown report format')
+    const key=textOf(id),html=report&&format==='html',text=report?(html?skillTests().reportHTML(key,desktop().read().language):skillTests().reportJSON(key)):skillTests().suiteJSON(key)
+    state.selecting=true
+    try{const file=await dialog.showSaveDialog(state.window,{defaultPath:report?(html?'skill-test-report.html':'skill-test-report.json'):'skill-test-suite.json',filters:[{name:html?'HTML':'JSON',extensions:[html?'html':'json']}]});if(!file.canceled&&file.filePath)skillTests().exportFile(file.filePath,text)}finally{state.selecting=false}
+  }
+  handle('export-skill-test-suite',(state,id)=>exportTests(state,id,false))
+  handle('export-skill-test-run',(state,id,format)=>exportTests(state,id,true,format))
+  handle('run-skill-creator',async(state,request)=>{state.selecting=true;try{return await skillTests().creator(state.id,request,selectedCwd(state))}finally{state.selecting=false}},true)
+  handle('install-created-skill',(_state,id)=>skillTests().installCreated(textOf(id)),true)
   handle('get-connection-state',state=>connectionState(state,true))
   handle('prepare-runtime',async state=>{
     const abort=new AbortController(),id=state.id;runtimeOperations.set(id,abort)
@@ -377,12 +420,13 @@ export function registerQwenIPC(): void {
   handle('delete-model',(state,id,revision)=>{studio().removeModel(textOf(id),textOf(revision));return studio().view(state.chatId,selectedCwd(state))},true)
   handle('select-model',(state,id)=>{if(!state.chatId)throw new Error('Сначала выберите диалог');studio().select(state.chatId,id===null?null:textOf(id));return view(state)},true)
   handle('save-prompt',(state,request)=>{studio().savePrompt(request as PromptSaveRequest,selectedCwd(state));return studio().view(state.chatId,selectedCwd(state),(request as PromptSaveRequest).scope)},true)
-  handle('get-skills',(state,scope)=>skills().list(scopeOf(scope),selectedCwd(state)))
+  handle('get-skills',(state,scope)=>{if(scope==='user'&&existsSync(join(app.getAppPath(),'resources/skills/skill-creator/SKILL.md')))skillTests().builtin();return skills().list(scopeOf(scope),selectedCwd(state))})
   handle('get-skill',(state,scope,id)=>skills().get(scopeOf(scope),textOf(id),selectedCwd(state)))
   handle('save-skill',(state,request)=>skills().save(request as SkillSaveRequest,selectedCwd(state)),true)
   handle('save-raw-skill',(state,scope,id,revision,raw)=>{if(typeof raw!=='string')throw new Error('Ожидается текст');return skills().saveRaw(scopeOf(scope),textOf(id),textOf(revision),raw,selectedCwd(state))},true)
   handle('toggle-skill',(state,scope,id,enabled,revision)=>{const s=scopeOf(scope);if(typeof enabled!=='boolean')throw new Error('Ожидается переключатель');skills().toggle(s,textOf(id),enabled,textOf(revision),selectedCwd(state));return skills().list(s,selectedCwd(state))},true)
   handle('delete-skill',(state,scope,id,revision)=>{const s=scopeOf(scope);skills().remove(s,textOf(id),textOf(revision),selectedCwd(state));return skills().list(s,selectedCwd(state))},true)
+  handle('get-skill-directory',(state,scope,id,path,offset)=>skills().directory(scopeOf(scope),textOf(id),textOf(path),typeof offset==='number'?offset:0,selectedCwd(state)))
   handle('get-skill-file',(state,scope,id,path)=>skills().getFile(scopeOf(scope),textOf(id),textOf(path),selectedCwd(state)))
   handle('save-skill-file',(state,scope,id,file)=>skills().saveFile(scopeOf(scope),textOf(id),file as SkillFile,selectedCwd(state)),true)
   handle('inspect-skill-file',(state,scope,id,path)=>skills().inspectFile(scopeOf(scope),textOf(id),textOf(path),selectedCwd(state)))
@@ -415,7 +459,7 @@ export function registerQwenIPC(): void {
   })
   ipcMain.handle('qwen:select-folder', async event => {
     const state = stateFor(event)
-    if (state.run || state.selecting || runtimeOperations.size || connectionChecks.size || probes.size) return fail('Дождитесь завершения текущей операции')
+    if (state.run || state.selecting || runtimeOperations.size || connectionChecks.size || probes.size || skillTestsService?.busy) return fail('Дождитесь завершения текущей операции')
     state.selecting = true
     try {
       const result = await dialog.showOpenDialog(state.window, {
@@ -433,7 +477,7 @@ export function registerQwenIPC(): void {
   for (const kind of ['chat', 'workdir'] as const) ipcMain.handle(`qwen:select-${kind}`, (event, id: unknown) => {
     try {
       const state = stateFor(event)
-      if (state.run || state.selecting || runtimeOperations.size || connectionChecks.size || probes.size) return fail('Дождитесь завершения текущей операции')
+      if (state.run || state.selecting || runtimeOperations.size || connectionChecks.size || probes.size || skillTestsService?.busy) return fail('Дождитесь завершения текущей операции')
       if (typeof id !== 'string') return fail('Некорректный идентификатор')
       if (kind === 'chat') { history().selectChat(id); state.chatId = id }
       else state.chatId = history().selectWorkdir(id)
@@ -444,7 +488,7 @@ export function registerQwenIPC(): void {
   ipcMain.handle('qwen:close-workdir', (event, id: unknown) => {
     try {
       const state = stateFor(event)
-      if (state.run || state.selecting || runtimeOperations.size || connectionChecks.size || probes.size) return fail('Дождитесь завершения текущей операции')
+      if (state.run || state.selecting || runtimeOperations.size || connectionChecks.size || probes.size || skillTestsService?.busy) return fail('Дождитесь завершения текущей операции')
       if (typeof id !== 'string') return fail('Некорректный ID папки')
       const index = history().snapshot()
       const chatIds = new Set(index.chats.filter(chat => chat.workdirId === id).map(chat => chat.id))
@@ -458,7 +502,7 @@ export function registerQwenIPC(): void {
   ipcMain.handle('qwen:start', (event, payload: unknown) => {
     try {
       const state = stateFor(event)
-      if (state.run || state.selecting || runtimeOperations.size || connectionChecks.size || probes.size) return fail('Сначала завершите текущую операцию')
+      if (state.run || state.selecting || runtimeOperations.size || connectionChecks.size || probes.size || skillTestsService?.busy) return fail('Сначала завершите текущую операцию')
       if (!state.chatId) return fail('Сначала выберите рабочую папку и диалог')
       if (!payload || typeof payload !== 'object') return fail('Некорректный запрос')
       const { requestId, prompt } = payload as Record<string, unknown>
@@ -489,7 +533,7 @@ export function registerQwenIPC(): void {
   ipcMain.handle('qwen:new-chat', event => {
     try {
       const state = stateFor(event)
-      if (state.run || state.selecting || runtimeOperations.size || connectionChecks.size || probes.size) return fail('Сначала завершите текущую операцию')
+      if (state.run || state.selecting || runtimeOperations.size || connectionChecks.size || probes.size || skillTestsService?.busy) return fail('Сначала завершите текущую операцию')
       if (!state.chatId) return fail('Сначала выберите рабочую папку')
       const current = history().snapshot().chats.find(chat => chat.id === state.chatId)
       if (!current) return fail('Диалог не найден')
@@ -500,7 +544,7 @@ export function registerQwenIPC(): void {
   for (const kind of ['rename', 'delete'] as const) ipcMain.handle(`qwen:${kind}-chat`, (event, id: unknown, title: unknown) => {
     try {
       const state = stateFor(event)
-      if (state.run || state.selecting || runtimeOperations.size || connectionChecks.size || probes.size) return fail('Дождитесь завершения текущей операции')
+      if (state.run || state.selecting || runtimeOperations.size || connectionChecks.size || probes.size || skillTestsService?.busy) return fail('Дождитесь завершения текущей операции')
       if (typeof id !== 'string') return fail('Некорректный ID диалога')
       if ([...states.values()].some(other => other.run?.chatId === id)) return fail('В диалоге выполняется запрос')
       if (kind === 'rename') {
@@ -521,7 +565,7 @@ export function registerQwenIPC(): void {
   ipcMain.handle('qwen:set-mode', (event, mode: unknown) => {
     try {
       const state = stateFor(event)
-      if (state.run || state.selecting || runtimeOperations.size || connectionChecks.size || probes.size) return fail('Режим можно менять между запросами')
+      if (state.run || state.selecting || runtimeOperations.size || connectionChecks.size || probes.size || skillTestsService?.busy) return fail('Режим можно менять между запросами')
       if (!state.chatId) return fail('Сначала выберите диалог')
       if (mode !== null && !isApprovalMode(mode)) return fail('Неизвестный режим разрешений')
       state.approvedChats.delete(state.chatId)
@@ -541,7 +585,7 @@ export function registerQwenIPC(): void {
   ipcMain.handle('qwen:save-settings', (event, request: unknown) => {
     try {
       const state = stateFor(event)
-      if (state.selecting || runtimeOperations.size || connectionChecks.size || probes.size || [...states.values()].some(other => other.run)) return fail('Дождитесь завершения запроса перед сохранением настроек')
+      if (state.selecting || runtimeOperations.size || connectionChecks.size || probes.size || skillTestsService?.busy || [...states.values()].some(other => other.run)) return fail('Дождитесь завершения запроса перед сохранением настроек')
       const saved = settings().save(request as SettingsSaveRequest, selectedCwd(state))
       return ok({ settings: saved, workspace: view(state) })
     } catch (error) { return fail(errorText(error)) }
@@ -558,7 +602,7 @@ export function registerQwenIPC(): void {
   ipcMain.handle('qwen:save-core-tools', (event, request: unknown) => {
     try {
       const state = stateFor(event)
-      if (state.selecting || runtimeOperations.size || connectionChecks.size || probes.size || [...states.values()].some(other => other.run)) return fail('Дождитесь завершения запроса')
+      if (state.selecting || runtimeOperations.size || connectionChecks.size || probes.size || skillTestsService?.busy || [...states.values()].some(other => other.run)) return fail('Дождитесь завершения запроса')
       return ok(settings().saveCoreTools(request as CoreToolsSaveRequest, selectedCwd(state)))
     } catch (error) { return fail(errorText(error)) }
   })
@@ -583,7 +627,7 @@ export function registerQwenIPC(): void {
   ipcMain.handle('qwen:mutate-mcp', (event, request: unknown) => {
     try {
       const state = stateFor(event)
-      if (state.selecting || runtimeOperations.size || connectionChecks.size || probes.size || [...states.values()].some(x => x.run)) return fail('Дождитесь завершения запроса или проверки MCP')
+      if (state.selecting || runtimeOperations.size || connectionChecks.size || probes.size || skillTestsService?.busy || [...states.values()].some(x => x.run)) return fail('Дождитесь завершения запроса или проверки MCP')
       const mutation = request as McpMutation, cwd = selectedCwd(state)
       const saved = mcp().mutateMcp(mutation, cwd)
       if (cwd && ((mutation.action === 'save' && mutation.scope === 'project') || mutation.action === 'approve' || (mutation.action === 'toggle' && mutation.enabled))) {
@@ -597,7 +641,7 @@ export function registerQwenIPC(): void {
     let controller: AbortController | undefined
     try {
       const state = stateFor(event)
-      if (state.selecting || runtimeOperations.size || connectionChecks.size || probes.size || [...states.values()].some(x => x.run)) return fail('Дождитесь завершения запроса или проверки MCP')
+      if (state.selecting || runtimeOperations.size || connectionChecks.size || probes.size || skillTestsService?.busy || [...states.values()].some(x => x.run)) return fail('Дождитесь завершения запроса или проверки MCP')
       if (!request || !['user', 'project'].includes(request.scope) || typeof request.name !== 'string' || typeof request.contextRevision !== 'string') return fail('Некорректный запрос MCP')
       const cwd = selectedCwd(state)
       const config = mcp().probeConfig(request.scope, request.name, request.contextRevision, cwd)

@@ -1,0 +1,8 @@
+{
+  "services": {
+    "api": {"quick": "Compile and smoke checks", "full": "Compile, smoke checks and integration checks"},
+    "web": {"quick": "Build web assets"},
+    "worker": {"full": "Build worker and run queue integration checks"}
+  },
+  "defaults": {"service": "api", "profile": "quick"}
+}

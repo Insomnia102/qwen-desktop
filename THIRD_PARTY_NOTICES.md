@@ -20,3 +20,12 @@ The `legal/SOURCE_CODE.txt` document identifies the source commit and download
 links for a release built by GitHub Actions. Dependency versions and build
 instructions are available in that source tree. Keep source downloads available
 for as long as the corresponding binaries are distributed.
+
+## Anthropic skill-creator
+
+The bundled `resources/skills/skill-creator` derives from
+https://github.com/anthropics/skills/tree/e4bb5d960d87126ff3b3a8af1a104b7db67560ba/skills/skill-creator.
+It is provided under Apache-2.0; the full license is retained as `LICENSE.txt`
+in that directory. Qwen Desktop supplies adapted entry instructions and a
+Desktop test-suite reference. The original entry remains `UPSTREAM_SKILL.md`;
+upstream evaluation helpers target Claude and are not the Desktop Qwen runner.

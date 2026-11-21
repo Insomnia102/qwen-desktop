@@ -41,7 +41,7 @@ export interface SkillEntry {
   userInvocable: boolean; modelInvocable: boolean; revision: string
 }
 export interface SkillsView { scope: SettingsScope; root: string; entries: SkillEntry[]; warnings: string[] }
-export interface SkillDocument { entry: SkillEntry; body: string; raw: string; files: SkillTreeNode[]; treeRevision: string }
+export interface SkillDocument { entry: SkillEntry; body: string; raw: string; files: SkillTreeNode[]; treeRevision: string; treeComplete?:boolean; treeWarnings?:string[] }
 export interface SkillSaveRequest {
   scope: SettingsScope; id: string | null; revision: string | null; name: string; description: string; body: string
   userInvocable: boolean; modelInvocable: boolean
@@ -50,3 +50,5 @@ export interface SkillTreeNode { path: string; kind: 'file'|'directory'; editabl
 export interface SkillFile { path: string; text: string; revision: string; encoding?: string; lineEnding?: string }
 export interface SkillAsset { path: string; size: number; revision: string; kind: 'text'|'image'|'binary'; dataUrl?: string; encoding?: string }
 export interface SkillPathChange { action: 'file'|'directory'|'rename'|'remove'; path: string; target?: string; revision: string }
+
+export interface SkillDirectoryPage {path:string;files:SkillTreeNode[];nextOffset:number|null;revision:string;warnings:string[]}

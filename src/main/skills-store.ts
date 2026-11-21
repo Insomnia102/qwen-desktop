@@ -25,7 +25,7 @@ function canonicalBase(path:string):string {
     }
   }
 }
-function parseSkill(raw:string):{meta:Record<string,unknown>;body:string;yaml:YamlDocument.Parsed} {
+export function parseSkill(raw:string):{meta:Record<string,unknown>;body:string;yaml:YamlDocument.Parsed} {
   if(raw.length>150000)throw new Error('SKILL.md больше 150 КБ')
   const match=/^\uFEFF?---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)([\s\S]*)$/.exec(raw)
   if(!match)throw new Error('В SKILL.md нужен YAML-заголовок между ---')
@@ -75,7 +75,7 @@ export class SkillsStore {
   }
   get(scope:SettingsScope,id:string,cwd:string|null):SkillDocument {
     const entry=this.entry(scope,id,cwd),raw=this.read(entry.path,150000)
-    return {entry,raw,body:parseSkill(raw).body,...new SkillPackage(dirname(entry.path)).tree()}
+    try{return {entry,raw,body:parseSkill(raw).body,...new SkillPackage(dirname(entry.path)).tree()}}catch(error){return {entry,raw,body:parseSkill(raw).body,files:[{path:'SKILL.md',kind:'file',size:Buffer.byteLength(raw),editable:entry.editable}],treeRevision:'',treeComplete:false,treeWarnings:[error instanceof Error?error.message:String(error)]}}
   }
   private safePath(root:string,path:string,create=false):string {
     if(typeof path!=='string'||path.length>300||!path||isAbsolute(path)||path.includes('\\')||path.split('/').some(p=>!p||p==='.'||p==='..'||/[<>:"|?*\0]/.test(p)||p.startsWith('.')||/[. ]$/.test(p)))throw new Error('Некорректный относительный путь файла')
@@ -115,6 +115,7 @@ export class SkillsStore {
     const e=this.entry(scope,id,cwd,true);if(e.revision!==revision)throw new Error('Skill изменился. Обновите список.');const trash=join(dirname(this.root(scope,cwd)),'desktop-skill-trash');mkdirSync(trash,{recursive:true});renameSync(dirname(e.path),join(trash,randomUUID()+'-'+basename(dirname(e.path))))
   }
   private package(scope:SettingsScope,id:string,cwd:string|null,edit=false):SkillPackage {return new SkillPackage(dirname(this.entry(scope,id,cwd,edit).path))}
+  directory(scope:SettingsScope,id:string,path:string,offset:number,cwd:string|null){return this.package(scope,id,cwd).directory(path,offset)}
   getFile(scope:SettingsScope,id:string,path:string,cwd:string|null):SkillFile {return this.package(scope,id,cwd).read(path)}
   inspectFile(scope:SettingsScope,id:string,path:string,cwd:string|null):SkillAsset {return this.package(scope,id,cwd).inspect(path)}
   saveFile(scope:SettingsScope,id:string,file:SkillFile,cwd:string|null):SkillFile {return this.package(scope,id,cwd,true).save(file)}

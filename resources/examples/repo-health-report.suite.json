@@ -1,0 +1,184 @@
+{
+  "version": 1,
+  "name": "Repository Health — four scenarios",
+  "skillName": "repo-health-report",
+  "scope": "user",
+  "invocation": "explicit",
+  "permissionMode": "auto-edit",
+  "useMcp": false,
+  "timeoutSeconds": 180,
+  "maxTurns": 30,
+  "maxToolCalls": 80,
+  "cases": [
+    {
+      "id": "healthy",
+      "name": "Healthy repository",
+      "prompt": "Проверь локальный репозиторий repo. Создай JSON и Markdown отчёты в output. Не изменяй исходные файлы.",
+      "files": [
+        {
+          "path": "repo/package.json",
+          "text": "{\"name\": \"healthy-demo\", \"scripts\": {\"test\": \"node --test\"}}"
+        },
+        {
+          "path": "repo/src/index.ts",
+          "text": "export const answer = 42\n"
+        }
+      ],
+      "checks": [
+        {
+          "kind": "json-equals",
+          "path": "output/report.json",
+          "pointer": "/status",
+          "value": "passed"
+        },
+        {
+          "kind": "json-equals",
+          "path": "output/report.json",
+          "pointer": "/summary/sourceFiles",
+          "value": 1
+        },
+        {
+          "kind": "json-equals",
+          "path": "output/report.json",
+          "pointer": "/summary/todoCount",
+          "value": 0
+        },
+        {
+          "kind": "json-equals",
+          "path": "output/report.json",
+          "pointer": "/summary/hasTestScript",
+          "value": true
+        },
+        {
+          "kind": "file-contains",
+          "path": "output/report.md",
+          "value": "Repository health: healthy-demo"
+        },
+        {
+          "kind": "file-equals",
+          "path": "repo/package.json",
+          "value": "{\"name\": \"healthy-demo\", \"scripts\": {\"test\": \"node --test\"}}"
+        }
+      ]
+    },
+    {
+      "id": "warnings",
+      "name": "Missing tests and TODOs",
+      "prompt": "Сделай аудит repo и сохрани оба отчёта в output. Учти правила подсчёта TODO, не исправляй репозиторий.",
+      "files": [
+        {
+          "path": "repo/package.json",
+          "text": "{\"name\":\"needs-review\"}"
+        },
+        {
+          "path": "repo/src/main.js",
+          "text": "// TODO: add tests; TODO: validate inputs\nexport const ready = false\n"
+        },
+        {
+          "path": "repo/node_modules/vendor/index.js",
+          "text": "// TODO must not be counted\n"
+        }
+      ],
+      "checks": [
+        {
+          "kind": "json-equals",
+          "path": "output/report.json",
+          "pointer": "/status",
+          "value": "warning"
+        },
+        {
+          "kind": "json-equals",
+          "path": "output/report.json",
+          "pointer": "/summary/sourceFiles",
+          "value": 1
+        },
+        {
+          "kind": "json-equals",
+          "path": "output/report.json",
+          "pointer": "/summary/todoCount",
+          "value": 2
+        },
+        {
+          "kind": "json-equals",
+          "path": "output/report.json",
+          "pointer": "/summary/hasTestScript",
+          "value": false
+        },
+        {
+          "kind": "file-contains",
+          "path": "output/report.md",
+          "value": "NO_TEST_SCRIPT"
+        }
+      ]
+    },
+    {
+      "id": "invalid-manifest",
+      "name": "Malformed package.json",
+      "prompt": "Проверь repo и запиши результат в output. Если package.json повреждён, сформируй отчёт об ошибке, не исправляя файл.",
+      "files": [
+        {
+          "path": "repo/package.json",
+          "text": "{\"name\": broken JSON"
+        }
+      ],
+      "checks": [
+        {
+          "kind": "json-equals",
+          "path": "output/report.json",
+          "pointer": "/status",
+          "value": "error"
+        },
+        {
+          "kind": "json-equals",
+          "path": "output/report.json",
+          "pointer": "/issues/0/code",
+          "value": "INVALID_MANIFEST"
+        },
+        {
+          "kind": "file-equals",
+          "path": "repo/package.json",
+          "value": "{\"name\": broken JSON"
+        }
+      ]
+    },
+    {
+      "id": "unicode-paths",
+      "name": "Unicode and spaces in paths",
+      "prompt": "Проверь репозиторий \"вход/мой проект\". Отчёты сохрани в output. Не меняй входные файлы.",
+      "files": [
+        {
+          "path": "вход/мой проект/package.json",
+          "text": "{\"name\":\"проект\",\"scripts\":{\"test\":\"node --test\"}}"
+        },
+        {
+          "path": "вход/мой проект/src/привет.ts",
+          "text": "export const привет = \"мир\"\n"
+        }
+      ],
+      "checks": [
+        {
+          "kind": "json-equals",
+          "path": "output/report.json",
+          "pointer": "/status",
+          "value": "passed"
+        },
+        {
+          "kind": "json-equals",
+          "path": "output/report.json",
+          "pointer": "/project",
+          "value": "проект"
+        },
+        {
+          "kind": "json-equals",
+          "path": "output/report.json",
+          "pointer": "/summary/sourceFiles",
+          "value": 1
+        },
+        {
+          "kind": "file-exists",
+          "path": "output/report.md"
+        }
+      ]
+    }
+  ]
+}

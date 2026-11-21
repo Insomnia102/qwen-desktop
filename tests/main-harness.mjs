@@ -13,15 +13,15 @@ const compile = source => ts.transpileModule(source, {
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 }
 }).outputText
 
-export async function harness({ userData, folder, query, onEvent = () => {}, onDialog = () => {}, runtime, startupMs=45000 }) {
+export async function harness({ userData, folder, query, onEvent = () => {}, onTestEvent = () => {}, onDialog = () => {}, runtime, startupMs=45000 }) {
   const handlers = new Map(), events = [], windowEvents = new Map(), contentEvents = new Map()
   let destroyed=false
   const sender = { get id(){if(destroyed)throw new Error('Object has been destroyed');return 1}, mainFrame: {}, on: (name, callback) => contentEvents.set(name, callback), isDestroyed: () => destroyed,
-    send(_channel, event) { if(destroyed)throw new Error('Object has been destroyed');events.push(event); onEvent(event, api) } }
+    send(_channel, event) {if(_channel==='qwen:skill-test-event'){api.testEvents.push(event);onTestEvent(event);return} if(destroyed)throw new Error('Object has been destroyed');events.push(event); onEvent(event, api) } }
   const window = { setBackgroundColor() {}, get webContents(){if(destroyed)throw new Error('Object has been destroyed');return sender}, on: (name, callback) => windowEvents.set(name, callback), isDestroyed: () => destroyed }
   const electron = { safeStorage: {isEncryptionAvailable:()=>true,getSelectedStorageBackend:()=> 'gnome_libsecret',encryptString:text=>Buffer.from('TEST:'+text),decryptString:data=>data.toString().slice(5)}, nativeTheme: { themeSource: 'system', shouldUseDarkColors: true }, app: { getLocale:()=> 'ru', getAppPath: () => root, getPath: name => name === 'home' ? join(userData, 'home') : userData },
     ipcMain: { handle: (name, callback) => handlers.set(name, callback) },
-    dialog: { showOpenDialog: async (...args) => {onDialog(args.at(-1));return { canceled: false, filePaths: [api.folder] }} } }
+    shell:{openPath:async()=>''},dialog: { showSaveDialog:async()=>({canceled:false,filePath:api.folder}),showOpenDialog: async (...args) => {onDialog(args.at(-1));return { canceled: false, filePaths: [api.folder] }} } }
   const transcript = { exports: {} }
   vm.runInNewContext(compile(await readFile(join(root, 'src/main/transcript.ts'), 'utf8')),
     { exports: transcript.exports, module: transcript })
@@ -33,7 +33,7 @@ export async function harness({ userData, folder, query, onEvent = () => {}, onD
  entry(){if(!this.status.ready)throw new Error('Qwen CLI is unavailable. Open Model connection to install it.');return join(dirname(require.resolve('@qwen-code/sdk/package.json')),'dist/cli/cli.js')}
  async prepare(signal,progress){progress('installing');this.status.ready=true;this.status.issue=null;return this.cached()}
  }
-  const customRequire = name => name==='./runtime-manager'?{RuntimeManager}:name==='./async-lifecycle'?{...loadTypeScript('src/main/async-lifecycle.ts'),waitFor:(work,signal,ms,message)=>loadTypeScript('src/main/async-lifecycle.ts').waitFor(work,signal,ms===45000?startupMs:ms,message)}: name === 'electron' ? electron : name === '@qwen-code/sdk' ? { query } :
+  const customRequire = name => name==='./skill-tests-service'?loadTypeScript('src/main/skill-tests-service.ts'):  name==='./runtime-manager'?{RuntimeManager}:name==='./async-lifecycle'?{...loadTypeScript('src/main/async-lifecycle.ts'),waitFor:(work,signal,ms,message)=>loadTypeScript('src/main/async-lifecycle.ts').waitFor(work,signal,ms===45000?startupMs:ms,message)}: name === 'electron' ? electron : name === '@qwen-code/sdk' ? { query } :
     name === './desktop-store' ? loadTypeScript('src/main/desktop-store.ts') : name === './connection-check' ? loadTypeScript('src/main/connection-check.ts') : name === '../shared/i18n' ? loadTypeScript('src/shared/i18n.ts') : name === '../shared/desktop' ? loadTypeScript('src/shared/desktop.ts') : name === './studio-store' ? loadTypeScript('src/main/studio-store.ts') : name === './skills-store' ? loadTypeScript('src/main/skills-store.ts') : name === '../shared/studio' ? loadTypeScript('src/shared/studio.ts') : name === './mcp-consent' ? loadTypeScript('src/main/mcp-consent.ts') : name === './mcp-store' ? loadTypeScript('src/main/mcp-store.ts') : name === './mcp-client' ? loadTypeScript('src/main/mcp-client.ts') : name === './history-store' ? { HistoryStore } : name === './settings-store' ? loadTypeScript('src/main/settings-store.ts') :
     name === '../shared/settings' ? loadTypeScript('src/shared/settings.ts') : name === './transcript' ? transcript.exports : require(name)
   customRequire.resolve = require.resolve
@@ -43,7 +43,7 @@ export async function harness({ userData, folder, query, onEvent = () => {}, onD
   })
   service.exports.registerQwenIPC(); service.exports.attachQwenWindow(window)
   const event = { sender, senderFrame: sender.mainFrame }
-  const api = { folder, events,
+  const api = { folder, events,testEvents:[],
     emitWindow: name => windowEvents.get(name)?.(),
     destroyNative: () => { destroyed=true },
     stop: () => service.exports.stopQwen(),
