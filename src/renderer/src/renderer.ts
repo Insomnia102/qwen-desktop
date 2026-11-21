@@ -9,6 +9,7 @@ import { openCoreTools } from './core-tools-panel'
 import { openMcp } from './mcp-panel'
 import { initTheme } from './theme'
 import { openSkills } from './skills-panel'
+import {openSkillTests} from './skill-tests-panel'
 import { openModels, openSystemPrompt } from './studio-panels'
 import { initSlashMenu } from './slash-menu'
 import type { StudioView } from '../../shared/studio'
@@ -46,6 +47,7 @@ function init(): void {
   const workdirs = required<HTMLElement>('workdirs-list')
 
   let api: QwenAPI
+  let skillTestsRunning=false
   let ready = false
   let workdir = ''
   let action: 'folder' | 'reset' | 'chat' | 'manage' | 'mode' | 'settings' | null = null
@@ -79,6 +81,7 @@ function init(): void {
   const promptButton = document.createElement('button');promptButton.type='button';promptButton.className='nav-item';promptButton.id='open-system-prompt'
   const promptIcon=document.createElement('span');promptIcon.className='nav-icon';promptIcon.textContent='≋'
   const promptLabel=document.createElement('span');promptLabel.className='nav-label';bindText(promptLabel,'Системный промпт');promptButton.append(promptIcon,promptLabel);skillsButton.after(promptButton)
+  const testerButton=document.createElement('button');testerButton.type='button';testerButton.id='open-skill-tests';testerButton.className='nav-item';const testerIcon=document.createElement('span');testerIcon.className='nav-icon';testerIcon.textContent='▷';const testerLabel=document.createElement('span');testerLabel.className='nav-label';bindText(testerLabel,()=>skillTestsRunning?t('Skills Lab · выполняется'):t('Skills Lab'));testerButton.append(testerIcon,testerLabel);skillsButton.after(testerButton)
   const modelControl=document.createElement('label');modelControl.className='composer-mode composer-model';modelControl.append(bindText(document.createTextNode(''),'Модель'))
   const modelSelect=document.createElement('select');modelSelect.id='model-profile';bindAttribute(modelSelect,'aria-label','Модель диалога');modelControl.append(modelSelect)
   const modelsButton=document.createElement('button');modelsButton.type='button';modelsButton.className='model-manage';modelsButton.id='open-models';modelsButton.textContent='＋';bindAttribute(modelsButton,'title','Добавить или изменить модель');bindAttribute(modelsButton,'aria-label','Управление моделями');modelControl.append(modelsButton)
@@ -325,7 +328,7 @@ function init(): void {
     return reply.ok
   }
   function update(): void {
-    const busy = action !== null || requestId !== null
+    const busy = action !== null || requestId !== null || skillTestsRunning
     input.disabled = !ready || !workdir || !hasReadableChat || busy
     choose.disabled = !ready || busy
     reset.disabled = !ready || !workdir || busy
@@ -336,6 +339,7 @@ function init(): void {
     coreToolsButton.disabled = !ready || busy
     mcpButton.disabled = !ready || busy
     skillsButton.disabled = !ready || busy
+    testerButton.disabled = !ready || action!==null || requestId!==null
     promptButton.disabled = !ready || busy
     modelsButton.disabled = !ready || busy
     modelSelect.disabled = !ready || !activeChatId || busy
@@ -513,6 +517,7 @@ function init(): void {
   }
 
   function showWorkspace(value: WorkspaceView): void {
+    skillTestsRunning=Boolean(value.skillTestsRunning)
     selectedModelId=value.modelProfileId??null
     clearMessages()
     input.value = ''
@@ -564,6 +569,7 @@ function init(): void {
   }
 
   function applyMode(value: WorkspaceView): void {
+    skillTestsRunning=Boolean(value.skillTestsRunning)
     selectedModelId=value.modelProfileId??null
     renderModels()
     currentMode = value.mode; modeOverride = value.modeOverride; allowAll = value.allowAll
@@ -590,6 +596,7 @@ function init(): void {
   const closeStudio=():void=>{action=null;update();void refreshStudio();if(!input.disabled)input.focus()}
   modelsButton.addEventListener('click',()=>{if(!ready||requestId||action)return;action='settings';update();openModels(api,Boolean(activeChatId),()=>{void refreshStudio()},closeStudio)})
   promptButton.addEventListener('click',()=>{if(!ready||requestId||action)return;action='settings';update();openSystemPrompt(api,Boolean(workdir),closeStudio)})
+  testerButton.addEventListener('click',()=>{if(!ready||requestId||action)return;action='settings';update();openSkillTests(api,Boolean(workdir),closeStudio)})
   skillsButton.addEventListener('click',()=>{if(!ready||requestId||action)return;action='settings';update();openSkills(api,Boolean(workdir),name=>{input.value=`/${name} `;resizeInput();update();input.focus()},closeStudio)})
   modelSelect.addEventListener('change',async()=>{
     if(!ready||requestId||action||!activeChatId)return
@@ -851,7 +858,7 @@ function init(): void {
   // Opening index.html in a regular browser does not supply the preload API.
   // Show a readable error rather than leaving a misleading "initialized" label.
   const bridge = window.api as QwenAPI | undefined
-  if (!bridge || ['prepareRuntime','cancelRuntime','getConnectionState','setUiLanguage','completeOnboarding','testConnection','cancelConnectionTest','load', 'selectFolder', 'selectChat', 'selectWorkdir', 'closeWorkdir', 'renameChat', 'deleteChat', 'setMode', 'getStudio', 'getCommands', 'getSkills', 'saveModel', 'savePrompt', 'selectModel', 'getSettings', 'saveSettings', 'getCoreTools', 'saveCoreTools', 'start', 'cancel', 'newChat', 'approve', 'onEvent']
+  if (!bridge || ['prepareRuntime','cancelRuntime','getConnectionState','setUiLanguage','completeOnboarding','testConnection','cancelConnectionTest','load', 'selectFolder', 'selectChat', 'selectWorkdir', 'closeWorkdir', 'renameChat', 'deleteChat', 'setMode', 'getStudio', 'getCommands', 'getSkills','getSkillDirectory','getSkillTests','onSkillTestEvent', 'saveModel', 'savePrompt', 'selectModel', 'getSettings', 'saveSettings', 'getCoreTools', 'saveCoreTools', 'start', 'cancel', 'newChat', 'approve', 'onEvent']
     .some(name => typeof bridge[name as keyof QwenAPI] !== 'function')) {
     booting = false
     notice(t('Нет актуального window.api. Запустите приложение через Electron и проверьте, что preload/index.ts обновлён и собран.'), 'error')
@@ -890,6 +897,7 @@ function init(): void {
   }))
   try {
     unsubscribe = api.onEvent(onEvent)
+    const offTests=api.onSkillTestEvent(event=>{skillTestsRunning=event.active;testerLabel.textContent=skillTestsRunning?t('Skills Lab · выполняется'):t('Skills Lab');update()});window.addEventListener('beforeunload',offTests,{once:true})
   } catch (error) { booting = false; fail(error); update(); return }
   void api.load().then(async reply => {
     if (check(reply)) { await desktopReady;ready = true; showWorkspace(reply.value);try{const raw=sessionStorage.getItem('qwen-language-draft');if(raw){const draft=JSON.parse(raw);sessionStorage.removeItem('qwen-language-draft');if(draft.chatId===activeChatId&&typeof draft.text==='string'){input.value=draft.text;resizeInput()}}}catch{} }

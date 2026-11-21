@@ -32,7 +32,8 @@ export function skillFiles(api: QwenAPI, p: ReturnType<typeof panel>, drafts: Sk
     move = button(t('Переместить')),
     remove = button(t('Убрать'), 'button mcp-remove'),
     reload = button(t('Обновить дерево')),
-    revert = button(t('Отменить изменения файла'))
+    revert = button(t('Отменить изменения файла')),
+    hideFolder = button(t('Скрыть папку из дерева'))
   for (const [node, id] of [
     [add, 'skill-file-add'],
     [folder, 'skill-folder-add'],
@@ -41,7 +42,8 @@ export function skillFiles(api: QwenAPI, p: ReturnType<typeof panel>, drafts: Sk
     [move, 'skill-path-move'],
     [remove, 'skill-path-remove'],
     [reload, 'skill-tree-reload'],
-    [revert, 'skill-file-cancel']
+    [revert, 'skill-file-cancel'],
+    [hideFolder,'skill-folder-hide']
   ] as const) {
     node.id = id
     toolbar.append(node)
@@ -63,7 +65,8 @@ export function skillFiles(api: QwenAPI, p: ReturnType<typeof panel>, drafts: Sk
       { element: HTMLElement; source: HTMLTextAreaElement; code: SkillCodeEditor }
     >(),
     opened = new Set<string>(),
-    expanded = new Set<string>()
+    expanded = new Set<string>(),
+    pages = new Map<string,number|null>(), loading = new Set<string>();let treeGeneration=0
   const save = (): void => {
     void drafts.flush().catch((error) => p.status(String(error.message ?? error), true))
   }
@@ -80,6 +83,7 @@ export function skillFiles(api: QwenAPI, p: ReturnType<typeof panel>, drafts: Sk
     move.disabled = fixed
     remove.disabled = fixed
     revert.disabled = !drafts.drafts.has(chosen)
+    hideFolder.disabled = !chosen || drafts.document.files.find(f=>f.path===chosen)?.kind!=='directory'
     tabs.replaceChildren()
     for (const path of opened) {
       const tab = button('', 'skill-file-tab')
@@ -300,6 +304,14 @@ export function skillFiles(api: QwenAPI, p: ReturnType<typeof panel>, drafts: Sk
         void structural({ action: 'rename', path, target: destination }, destination)
     }
   }
+  async function loadDirectory(path:string,offset=0):Promise<void>{
+    if(disposed||loading.has(path)||!api.getSkillDirectory)return
+    const generation=treeGeneration;loading.add(path)
+    try{const page=value(await api.getSkillDirectory(drafts.scope,drafts.document.entry.id,path,offset));if(disposed||generation!==treeGeneration)return
+      const byPath=new Map(drafts.document.files.filter(f=>offset>0||parent(f.path)!==path).map(f=>[f.path,f]));for(const node of page.files)byPath.set(node.path,node);drafts.document.files=[...byPath.values()];pages.set(path,page.nextOffset);renderTree()
+      if(page.warnings.length)p.status(page.warnings.join('\n'),true)
+    }catch(error){if(!disposed)p.status(error instanceof Error?error.message:String(error),true)}finally{loading.delete(path)}
+  }
   function build(parentPath: string, container: HTMLElement): void {
     const ul = el('ul')
     container.append(ul)
@@ -316,7 +328,7 @@ export function skillFiles(api: QwenAPI, p: ReturnType<typeof panel>, drafts: Sk
           summary = el('summary', 'skill-tree-folder', basename(node.path))
         details.open = expanded.has(node.path) || chosen.startsWith(node.path + '/')
         details.ontoggle = () => {
-          if (details.open) expanded.add(node.path)
+          if (details.open) {expanded.add(node.path);if(!pages.has(node.path))void loadDirectory(node.path)}
           else expanded.delete(node.path)
         }
         summary.onclick = () => void reveal(node.path)
@@ -343,7 +355,9 @@ export function skillFiles(api: QwenAPI, p: ReturnType<typeof panel>, drafts: Sk
         e.dataTransfer.effectAllowed = 'move'
       }
     }
+    const next=pages.get(parentPath);if(typeof next==='number'){const more=button(t('Загрузить ещё'),'skill-tree-more');more.onclick=()=>void loadDirectory(parentPath,next);container.append(more)}
   }
+  function renderTree():void{tree.replaceChildren();const root=button(t('Пакет /'),'skill-tree-root');root.dataset.path='';root.onclick=()=>void reveal('');dropTarget(root,'');tree.append(root);build('',tree);highlight()}
   function refresh(): void {
     ++sequence
     for (const editor of editors.values()) editor.code.destroy()
@@ -352,14 +366,12 @@ export function skillFiles(api: QwenAPI, p: ReturnType<typeof panel>, drafts: Sk
       if (!drafts.document.files.some((f) => f.path === path)) opened.delete(path)
     })
     content.replaceChildren()
-    tree.replaceChildren()
-    const root = button(t('Пакет /'), 'skill-tree-root')
-    root.dataset.path = ''
-    root.onclick = () => void reveal('')
-    dropTarget(root, '')
-    tree.append(root)
-    build('', tree)
-    highlight()
+    treeGeneration++;pages.clear();loading.clear();renderTree();void loadDirectory('')
+    if(drafts.document.treeComplete===false)hint.textContent=t('Большой пакет: папки загружаются по мере открытия. Кэши можно скрыть через .skillignore.')
+    if(drafts.document.treeWarnings?.length)p.status(drafts.document.treeWarnings.join('\n'),true)
+  }
+  hideFolder.onclick=()=>{const path=chosen;if(!path||drafts.document.files.find(f=>f.path===path)?.kind!=='directory')return
+    void p.perform(async()=>{await drafts.flush();if(!drafts.document.files.some(f=>f.path==='.skillignore'))await drafts.change({action:'file',path:'.skillignore'});const file=await drafts.file('.skillignore');drafts.edit('.skillignore',file.text.trimEnd()+'\n'+path+'/\n');await drafts.flush();await drafts.reload()},()=>{refresh();void reveal('SKILL.md')})
   }
   add.onclick = () => pathDialog('file')
   folder.onclick = () => pathDialog('directory')

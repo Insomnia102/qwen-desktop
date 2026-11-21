@@ -93,6 +93,17 @@ export class SettingsStore {
     return { scope, path, revision: selected.document.revision, fields }
   }
 
+  testRuntimeConfig(cwd:string|null):{settings:Record<string,unknown>;oauthFile?:string}{
+    const data:Record<string,unknown>={},auth:Record<string,unknown>={},model:Record<string,unknown>={},providers:Record<string,unknown>={},deny:string[]=[]
+    for(const layer of this.layers(cwd)){
+      const a=get(layer.document.data,'security.auth'),m=get(layer.document.data,'model'),p=get(layer.document.data,'modelProviders')
+      if(object(a))Object.assign(auth,a);if(object(m))Object.assign(model,m);if(object(p))Object.assign(providers,p)
+      deny.push(...this.strings(layer.document.data,'permissions.deny'))
+    }
+    if(Object.keys(auth).length)data.security={auth};if(Object.keys(model).length)data.model=model;if(Object.keys(providers).length)data.modelProviders=providers
+    data.tools={disabled:this.disabledCoreTools(cwd)};data.permissions={deny:[...new Set(deny)]}
+    return {settings:data,...auth.selectedType==='qwen-oauth'?{oauthFile:join(dirname(this.userPath),'oauth_creds.json')}: {}}
+  }
   connectionConfigured(cwd:string|null,env:NodeJS.ProcessEnv=process.env,modelOverride?:string):boolean {
     let auth:unknown,model:unknown,key:unknown
     const providers:Record<string,unknown>={}

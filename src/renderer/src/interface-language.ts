@@ -26,6 +26,7 @@ export function localizedApi(api:QwenAPI):QwenAPI {
  const wrapped={} as Record<string,unknown>
  for(const [name,method]of Object.entries(api)){
   if(name==='onEvent')continue
+  if(name==='onSkillTestEvent'){wrapped[name]=method;continue}
   wrapped[name]=async(...args:unknown[])=>{try{const r=await (method as (...args:unknown[])=>Promise<unknown>)(...args);if(r&&typeof r==='object'&&'ok' in r&&!r.ok&&'error' in r)return {...r,error:translateMessage(String(r.error))};return r}catch(e){throw new Error(translateMessage(e instanceof Error?e.message:String(e)))}}
  }
  wrapped.onEvent=(callback:(event:QwenEvent)=>void)=>api.onEvent(event=>{

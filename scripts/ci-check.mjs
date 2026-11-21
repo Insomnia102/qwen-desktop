@@ -15,4 +15,4 @@ node([require.resolve('typescript/bin/tsc'),'-p','tsconfig.ci.json','--noUnusedL
 const files=readdirSync('tests').filter(n=>n.endsWith('.test.mjs')).sort().map(n=>'tests/'+n)
 node(['--test','--test-concurrency=4',...files])
 node([join(dirname(require.resolve('electron-vite/package.json')),'bin/electron-vite.js'),'build'])
-node(['tests/ui-onboarding.mjs']);node(['tests/ui-studio.mjs'])
+node(['tests/ui-onboarding.mjs']);node(['tests/ui-studio.mjs']);node(['tests/ui-skill-tests.mjs']);node(['tests/ui-skill-dialogue.mjs'])

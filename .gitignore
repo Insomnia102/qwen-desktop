@@ -1,3 +1,4 @@
+.vscode/
 node_modules/
 out/
 dist/
@@ -19,3 +20,7 @@ coverage/
 .DS_Store
 Thumbs.db
 # Commit pnpm-lock.yaml. It is required by the frozen CI install.
+
+# Private offline testing kits
+*-mac-*-offline.zip
+Qwen-Desktop-*-mac-*-offline/

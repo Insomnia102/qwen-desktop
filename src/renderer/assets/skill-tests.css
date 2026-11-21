@@ -1,0 +1,388 @@
+/* SPDX-License-Identifier: GPL-3.0-only */
+.skill-tests-dialog {
+  width: min(1440px, calc(100vw - 32px));
+  height: min(940px, calc(100vh - 32px));
+}
+.skill-tests-dialog .studio-body {
+  grid-template-columns: 230px minmax(0, 1fr);
+}
+.skill-tests-dialog .studio-detail {
+  padding: 20px;
+  min-width: 0;
+}
+.skill-tests-dialog .settings-footer {
+  flex-wrap: wrap;
+}
+.test-list-heading {
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  padding: 14px 10px 8px;
+}
+.test-config-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+.test-case-tabs {
+  display: flex;
+  gap: 6px;
+  overflow: auto;
+  padding: 14px 0;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+.test-case-tab {
+  background: var(--surface-0);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  color: var(--muted);
+  padding: 8px 12px;
+  white-space: nowrap;
+  font-size: 12px;
+}
+.test-case-tab[aria-selected='true'] {
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-color: var(--accent-border);
+}
+.test-safety-note {
+  font-size: 11px;
+  color: var(--muted);
+  line-height: 1.65;
+  border-left: 2px solid var(--accent-border);
+  padding-left: 12px;
+}
+.test-fixtures,
+.test-checks {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.test-fixtures h4,
+.test-checks h4 {
+  font-size: 13px;
+  margin: 7px 0;
+}
+.test-fixture {
+  display: grid;
+  grid-template-columns: minmax(140px, 1fr) minmax(200px, 2fr) auto;
+  align-items: start;
+  gap: 8px;
+  border: 1px solid var(--border);
+  padding: 10px;
+  border-radius: 8px;
+  background: var(--surface-0);
+}
+.test-check {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-0);
+}
+.test-check > select,
+.test-check > input {
+  flex: 1 1 160px;
+  min-width: 0;
+}
+.test-check > textarea {
+  flex: 1 1 100%;
+  font-family: Consolas, monospace;
+}
+.test-fixture textarea {
+  font-family: Consolas, monospace;
+}
+.test-run-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.test-run-heading h3 {
+  margin: 0;
+}
+.test-case-result {
+  border: 1px solid var(--border);
+  background: var(--surface-1);
+  border-radius: 10px;
+  margin: 12px 0;
+  overflow: hidden;
+}
+.test-case-result > summary {
+  display: flex;
+  justify-content: space-between;
+  gap: 15px;
+  padding: 14px;
+  cursor: pointer;
+  font-size: 12px;
+}
+.test-case-result > summary span {
+  color: var(--muted);
+  font-size: 11px;
+}
+.test-case-result[data-status='passed'] {
+  border-color: var(--success-border);
+}
+.test-case-result[data-status='failed'],
+.test-case-result[data-status='error'] {
+  border-color: var(--danger-border);
+}
+.test-case-result > p,
+.test-case-result > .test-answer,
+.test-case-result > .test-artifacts,
+.test-case-result > .test-trace {
+  margin: 12px;
+}
+.test-check-result {
+  margin: 8px 12px;
+  padding: 10px;
+  background: var(--surface-0);
+  border-left: 2px solid var(--danger);
+  font-size: 12px;
+}
+.test-check-result[data-passed='true'] {
+  border-left-color: var(--success);
+}
+.test-check-result pre,
+.test-trace pre,
+.test-permission pre,
+.test-artifact-dialog pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font:
+    12px/1.7 Consolas,
+    monospace;
+  color: var(--text-secondary);
+  margin-top: 8px;
+  max-height: 320px;
+  overflow: auto;
+}
+.test-trace summary {
+  font-size: 12px;
+  color: var(--muted);
+  cursor: pointer;
+}
+.test-artifacts {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.test-artifact {
+  font-size: 11px;
+  padding: 6px 9px;
+  background: var(--surface-0);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  color: var(--accent);
+}
+.test-permission {
+  margin: 12px 0;
+  padding: 15px;
+  background: var(--warning-soft);
+  border: 1px solid var(--warning-border);
+  border-radius: 9px;
+  font-size: 12px;
+}
+.test-permission button {
+  margin: 8px 8px 0 0;
+}
+.test-artifact-dialog {
+  width: min(950px, calc(100vw - 40px));
+  max-height: 85vh;
+  padding: 22px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface-1);
+  color: var(--text);
+}
+.test-artifact-dialog::backdrop {
+  background: var(--overlay);
+}
+.test-artifact-dialog h3 {
+  font-size: 14px;
+}
+.test-artifact-dialog pre {
+  max-height: 65vh;
+}
+.skill-tree-more {
+  display: block;
+  width: 100%;
+  font-size: 11px;
+  color: var(--accent);
+  background: var(--accent-soft);
+  border: 0;
+  border-radius: 5px;
+  padding: 7px;
+  margin-top: 6px;
+}
+@media (max-width: 900px) {
+  .skill-tests-dialog .studio-body {
+    grid-template-columns: 170px minmax(0, 1fr);
+  }
+  .test-config-grid {
+    grid-template-columns: 1fr;
+  }
+  .test-fixture {
+    grid-template-columns: 1fr;
+  }
+  .skill-tests-dialog .mcp-toolbar {
+    flex-wrap: wrap;
+  }
+}
+@media (max-width: 600px) {
+  .skill-tests-dialog .studio-body {
+    display: flex;
+    flex-direction: column;
+  }
+  .skill-tests-dialog .studio-list {
+    max-height: 90px;
+  }
+  .skill-tests-dialog .studio-detail {
+    flex: 1;
+    min-height: 0;
+    padding: 12px;
+  }
+}
+
+/* Multi-turn skill evaluation */
+.skill-tests-dialog .mcp-toolbar {
+  flex-wrap: wrap;
+}
+.test-dialogue-config {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 15px;
+  border: 1px solid var(--accent-border);
+  background: var(--accent-soft);
+  border-radius: 10px;
+}
+.test-extra-checks > summary,
+.test-evidence > summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 12px;
+  padding: 10px 0;
+}
+.test-extra-checks > .test-fixtures,
+.test-extra-checks > .test-checks {
+  margin: 12px 0;
+}
+.test-conversation {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px;
+}
+.test-dialogue-message {
+  max-width: 94%;
+  padding: 13px 16px;
+  border: 1px solid var(--border);
+  background: var(--surface-0);
+  border-radius: 11px;
+  min-width: 0;
+}
+.test-dialogue-message[data-role='user'] {
+  align-self: flex-end;
+  background: var(--accent-soft);
+  border-color: var(--accent-border);
+}
+.test-dialogue-message > small {
+  display: block;
+  margin-bottom: 7px;
+  color: var(--muted);
+  font-size: 10px;
+}
+.test-live-reply {
+  margin: 14px;
+  padding: 16px;
+  border: 1px solid var(--accent-border);
+  border-radius: 10px;
+  background: var(--accent-soft);
+}
+.test-live-reply textarea {
+  display: block;
+  width: 100%;
+  min-height: 85px;
+  margin: 10px 0;
+  border: 1px solid var(--border-strong);
+  background: var(--surface-0);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 12px;
+  resize: vertical;
+  font: 13px/1.6 var(--font);
+}
+.test-live-reply button {
+  margin: 4px 8px 0 0;
+}
+.test-phase {
+  font-size: 12px;
+  margin: 14px;
+  color: var(--accent);
+}
+.test-assessment-title {
+  font-size: 13px;
+  margin: 16px 14px 8px;
+}
+.test-assessment {
+  margin: 10px 14px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--warning-border);
+  border-radius: 8px;
+  background: var(--surface-0);
+  font-size: 12px;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+.test-assessment[data-verdict='passed'] {
+  border-left-color: var(--success);
+}
+.test-assessment[data-verdict='failed'] {
+  border-left-color: var(--danger);
+}
+.test-verdict {
+  display: block;
+  color: var(--muted);
+  font-size: 10px;
+  margin: 4px 0;
+}
+.test-evidence-link {
+  margin: 8px 6px 0 0;
+  border: 1px solid var(--border);
+  color: var(--accent);
+  background: var(--surface-1);
+  border-radius: 4px;
+  padding: 3px 8px;
+}
+.test-evidence {
+  margin: 14px;
+}
+.test-evidence > div {
+  margin: 10px 0;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+}
+.test-evidence strong {
+  font-size: 11px;
+  color: var(--accent);
+}
+.test-evidence pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 250px;
+  overflow: auto;
+  font:
+    11px/1.65 Consolas,
+    monospace;
+  color: var(--text-secondary);
+}
+.test-case-result[data-status='review'] {
+  border-color: var(--warning-border);
+}

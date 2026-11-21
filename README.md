@@ -11,8 +11,8 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Tsukuyomi102/qwen-desktop/releases">Download</a> ·
-  <a href="https://github.com/Tsukuyomi102/qwen-desktop/issues">Report an issue</a> ·
+  <a href="https://github.com/insomnia102/qwen-desktop/releases">Download</a> ·
+  <a href="https://github.com/insomnia102/qwen-desktop/issues">Report an issue</a> ·
   <a href="#roadmap">Roadmap</a>
 </p>
 
@@ -40,13 +40,16 @@ This is an independent community project, not an official Qwen application.
 - **Model profiles.** Configure OpenAI-compatible, Anthropic-compatible and Gemini API connections, check connectivity and switch models.
 - **MCP servers.** Manage stdio, Streamable HTTP and SSE connections, inspect available tools and choose which ones are enabled.
 - **Skill packages.** Create, import and edit skills with their instructions, scripts, rules, references and other resources directly in the app.
+- **Skills Lab.** Test full conversations manually or with an AI user. Generate editable scenarios from a plain-language goal, evaluate natural-language requirements with cited evidence, and combine them with exact file/JSON checks. Includes fresh test workspaces, persistent run history with deletion, standalone HTML reports with evidence links, YOLO automation and explicit/automatic skill invocation.
+- **Built-in Skill Creator.** Anthropic’s skill-creator resources, adapted for Qwen: describe a skill, review its generated package and scenarios, then install it. No Claude CLI is required for the Desktop workflow.
+- **Large skill packages.** Paged file navigation, metadata previews for large files and `.skillignore` for downloaded repositories and caches.
 - **System prompts and slash commands.** Customize the agent's instructions and invoke available commands and skills from chat.
 - **Settings UI.** Change supported Qwen settings and toggle built-in tools through the UI.
 - **Three interface languages and two themes.** English, Russian and Simplified Chinese; light and dark appearance.
 
 ## Installation
 
-Download an installer from [Releases](https://github.com/Tsukuyomi102/qwen-desktop/releases):
+Download an installer from [Releases](https://github.com/insomnia102/qwen-desktop/releases):
 
 | Platform | Architecture | Download format |
 | --- | --- | --- |
@@ -68,9 +71,12 @@ Chats are saved locally. Model requests go to the provider you configure. Tool p
 
 - [ ] **Agents:** add a visual interface for creating, editing and configuring agents.
 - [ ] **Workflows:** create, edit and reuse workflows inside the app.
-- [ ] **A better skill editor:** improve code editing, resource navigation and validation for multi-file skill packages.
+- [ ] **Skill testing improvements:** richer comparisons, larger fixture imports and additional evaluation options.
+- [ ] **A better skill editor:** continue improving navigation and validation for multi-file packages.
 
-These are planned features, not promises of a specific release date. Suggestions and bug reports are welcome in [Issues](https://github.com/Tsukuyomi102/qwen-desktop/issues).
+These are planned features, not promises of a specific release date. Suggestions and bug reports are welcome in [Issues](https://github.com/insomnia102/qwen-desktop/issues).
+
+See [Skills Lab guide](docs/SKILLS_LAB.md) for dialogue scenarios, checks, permissions and HTML run reports.
 
 ## Run from source
 
@@ -85,7 +91,7 @@ Run the project checks with `node scripts/ci-check.mjs`.
 
 ## Author and license
 
-Created by **Egor Svirin — [Tsukuyomi102](https://github.com/Tsukuyomi102)**.
+Created by **Egor Svirin — [insomnia102](https://github.com/insomnia102)**.
 
 Copyright © 2026 Egor Svirin.
 
