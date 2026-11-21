@@ -389,6 +389,75 @@ test('bundled Anthropic creator retains every pinned upstream resource and its l
   }
 })
 
+test('Lab workspaces beneath a parent alias use canonical paths and keep skill snapshots readable', () =>
+  fixture(async (base) => {
+    const { realpath, symlink } = await import('node:fs/promises')
+    const { realpathSync } = await import('node:fs')
+    const alias = join(base, 'parent-alias')
+    await symlink(await realpath(base), alias, process.platform === 'win32' ? 'junction' : 'dir')
+    const store = new SkillTestsStore(join(alias, 'lab-data'))
+    assert.equal(store.directory, realpathSync.native(join(alias, 'lab-data')))
+    const doc = await skill(base)
+    const runner = new SkillTestRunner(
+      store,
+      fakeQuery(async (c) => {
+        await writeFile(join(c.options.cwd, 'result.txt'), 'ready')
+      }),
+      () => {}
+    )
+    const suite = {
+      ...suiteDefinition(input(doc.entry.id)),
+      id: randomUUID(),
+      revision: 'alias',
+      skillName: doc.entry.name,
+      sourceCwd: base,
+      cases: [
+        {
+          id: 'alias',
+          name: 'Alias workspace',
+          prompt: 'Write result.txt',
+          files: [],
+          checks: [{ kind: 'file-equals', path: 'result.txt', value: 'ready' }]
+        }
+      ]
+    }
+    const batch = runner.start(1, suite, doc, environment)
+    await wait(() => !runner.running)
+    assert.equal(store.run(batch.id).cases[0].status, 'passed', JSON.stringify(store.run(batch.id)))
+    assert.equal(runner.artifact(batch.id, 'alias', 'result.txt').text, 'ready')
+  }))
+
+test('Windows-style Git checkout preserves all pinned Skill Creator bytes with autocrlf enabled', () =>
+  fixture(async (base) => {
+    const { copyFile } = await import('node:fs/promises')
+    const { createHash } = await import('node:crypto')
+    const provenance = JSON.parse(
+      await readFile(join(root, 'resources/skills/skill-creator/PROVENANCE.json'), 'utf8')
+    )
+    const git = (...args) => {
+      const result = spawnSync(
+        'git',
+        ['-c', 'core.autocrlf=true', '-c', 'core.eol=crlf', '-C', base, ...args],
+        { encoding: 'utf8' }
+      )
+      assert.equal(result.status, 0, result.stderr || result.error?.message)
+    }
+    git('init', '--quiet')
+    await copyFile(join(root, '.gitattributes'), join(base, '.gitattributes'))
+    for (const name of Object.keys(provenance.upstreamFiles)) {
+      const relative = 'resources/skills/skill-creator/' + name
+      await mkdir(dirname(join(base, relative)), { recursive: true })
+      await copyFile(join(root, relative), join(base, relative))
+    }
+    git('add', '.gitattributes', 'resources/skills/skill-creator')
+    const checkout = join(base, 'checked').replace(/\\/g, '/') + '/'
+    git('checkout-index', '--all', '--force', '--prefix=' + checkout)
+    for (const [name, expected] of Object.entries(provenance.upstreamFiles)) {
+      const bytes = await readFile(join(checkout, 'resources/skills/skill-creator', name))
+      assert.equal(createHash('sha256').update(bytes).digest('hex'), expected, name)
+    }
+  }))
+
 test('YOLO suite runs multiple cases without shell or MCP approval prompts and does not grant a later Ask run', () =>
   fixture(async (base) => {
     const doc = await skill(base),

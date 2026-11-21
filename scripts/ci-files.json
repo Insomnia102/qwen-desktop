@@ -1,6 +1,7 @@
 {
   "version": 1,
   "requiredFiles": [
+    ".gitattributes",
     ".github/actions/setup-project/action.yml",
     ".github/workflows/ci.yml",
     ".github/workflows/release.yml",

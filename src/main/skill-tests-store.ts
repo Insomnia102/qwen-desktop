@@ -8,6 +8,7 @@ import {
   unlinkSync,
   copyFileSync,
   readdirSync,
+  realpathSync,
   lstatSync
 } from 'node:fs'
 import { join, isAbsolute } from 'node:path'
@@ -190,6 +191,9 @@ const hash = (v: unknown): string => createHash('sha256').update(JSON.stringify(
 export class SkillTestsStore {
   constructor(readonly directory: string) {
     mkdirSync(directory, { recursive: true, mode: 0o700 })
+    // macOS temp paths can use /var -> /private/var aliases. Keep every
+    // derived Lab workspace canonical before SkillPackage validates it.
+    this.directory = realpathSync.native(directory)
   }
   private write(file: string, value: unknown): void {
     const temp = file + '.' + randomUUID() + '.tmp'
